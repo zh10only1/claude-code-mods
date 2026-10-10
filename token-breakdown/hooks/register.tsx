@@ -62,24 +62,26 @@ export const THEMES: Record<string, Theme> = {
     sep: '#7b2cff',
     blend: 'smooth',
   },
-  // Edo woodblock print meets hip-hop: Jin's indigo, ochre earth, a vermilion
-  // seal stamp; Fuu's pink, washed parchment, Mugen's red, olive countryside.
-  champloo: {
-    id: 'champloo',
-    name: 'Samurai Champloo',
-    a: '#5a8bc4',
-    b: '#d9a441',
-    c: '#e0603a',
-    accent: '#f07ca0',
-    title2: '#e8d8b0',
-    warn: '#f08a24',
-    hot: '#e63946',
-    track: '#2c3a4f',
-    muted: '#a39a7c',
-    label: '#8f9a5b',
-    sep: '#7d8fb0',
-    blend: 'smooth',
-  },
+  // Samurai Champloo: removed from the list at the user's request (2026-10-10);
+  // kept here to bring back.
+  // // Edo woodblock print meets hip-hop: Jin's indigo, ochre earth, a vermilion
+  // // seal stamp; Fuu's pink, washed parchment, Mugen's red, olive countryside.
+  // champloo: {
+  //   id: 'champloo',
+  //   name: 'Samurai Champloo',
+  //   a: '#5a8bc4',
+  //   b: '#d9a441',
+  //   c: '#e0603a',
+  //   accent: '#f07ca0',
+  //   title2: '#e8d8b0',
+  //   warn: '#f08a24',
+  //   hot: '#e63946',
+  //   track: '#2c3a4f',
+  //   muted: '#a39a7c',
+  //   label: '#8f9a5b',
+  //   sep: '#7d8fb0',
+  //   blend: 'smooth',
+  // },
   // The opening's flat colour panels: blue, yellow, red-orange in hard bands;
   // Spike's suit and shirt, teal, cream, amber bar light, cigarette smoke.
   bebop: {
@@ -105,8 +107,8 @@ const ALIASES: Record<string, string> = {
   gits: 'ghost',
   ghostintheshell: 'ghost',
   ghostandshell: 'ghost',
-  samurai: 'champloo',
-  samuraichamploo: 'champloo',
+  // samurai: 'champloo',
+  // samuraichamploo: 'champloo',
   cowboy: 'bebop',
   cowboybebop: 'bebop',
 }

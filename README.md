@@ -70,7 +70,6 @@ Each theme is named after an anime and recolours the frame, bar, title and reado
 | Theme | `/tokens theme …` | Look |
 | --- | --- | --- |
 | **Ghost in the Shell** (default) | `ghost` | Neon cyan → purple → hot pink, with magenta and a yellow warning. Cyberpunk. |
-| **Samurai Champloo** | `champloo` | A woodblock print: Jin's indigo → ochre → a vermilion seal stamp, with Fuu's pink, washed parchment and olive. |
 | **Cowboy Bebop** | `bebop` | The opening's flat colour panels: blue, yellow and red-orange in hard bands, with teal, cream and smoky amber. |
 
 It refreshes after every turn, after compaction, and at most every 3 seconds while tools run. It uses Claude Code's local `summary` estimate, so it **makes no extra API calls**. The figures can differ slightly from `/context`, which counts with the token-count API.

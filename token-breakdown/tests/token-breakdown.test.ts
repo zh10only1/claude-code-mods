@@ -136,8 +136,7 @@ test('/tokens theme lists, picks and remembers a theme', async ($, on) => {
   for (const t of Object.values(THEMES)) expect(list.text).toContain(t.name)
   expect(list.text).toContain('● Ghost in the Shell')
 
-  const other = Object.values(THEMES).find(t => t.id !== 'ghost')
-  if (!other) return
+  const other = THEMES.bebop!
   const picked = await $.command.run({ command: 'tokens', args: `theme ${other.name}`, ...RUN })
   expect(picked.text).toBe(`Theme: ${other.name}`)
 
@@ -157,14 +156,13 @@ test('themes are found by id, alias or full name', () => {
   expect(findTheme('Ghost in the Shell')?.id).toBe('ghost')
   expect(findTheme('GHOST-IN-THE-SHELL')?.id).toBe('ghost')
   expect(findTheme('Ghost and Shell')?.id).toBe('ghost')
-  expect(findTheme('Samurai Champloo')?.id).toBe('champloo')
+  expect(findTheme('Samurai Champloo')).toBeUndefined()
   expect(findTheme('cowboy bebop')?.id).toBe('bebop')
   expect(findTheme('nope')).toBeUndefined()
 })
 
 test('a theme saved in an earlier session is back at start', async ($, on) => {
-  const other = Object.values(THEMES).find(t => t.id !== 'ghost')
-  if (!other) return
+  const other = THEMES.bebop!
   engine(on, { theme: other.id })
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'tokens', args: '', ...RUN })
@@ -197,5 +195,13 @@ test('Cowboy Bebop draws flat title-card bands, not a blend', () => {
   expect(neon(bebop, 0.1)).toBe(bebop.a)
   expect(neon(bebop, 0.5)).toBe(bebop.b)
   expect(neon(bebop, 0.9)).toBe(bebop.c)
-  expect(neon(THEMES.champloo!, 0.25)).not.toBe(THEMES.champloo!.a)
+  expect(neon(THEMES.ghost!, 0.25)).not.toBe(THEMES.ghost!.a)
+})
+
+test('a saved theme that no longer exists falls back to Ghost in the Shell', async ($, on) => {
+  engine(on, { theme: 'champloo' })
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  const list = await $.command.run({ command: 'tokens', args: 'theme', ...RUN })
+  expect(list.text).toContain('● Ghost in the Shell')
+  expect(list.text).not.toContain('Champloo')
 })
