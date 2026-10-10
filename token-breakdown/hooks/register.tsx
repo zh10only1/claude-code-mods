@@ -63,15 +63,15 @@ const spark = (percent: number) => SPARKS[Math.max(0, Math.min(7, Math.round((pe
 
 const shortPath = (p: string) => p.replace(/^\/(Users|home)\/[^/]+/, '~')
 
-// claude-opus-5-5 → Claude Opus 5.5; a date suffix dropped, [1m] kept.
+// claude-opus-5-5 → Opus 5.5; a date suffix dropped, [1m] kept.
 export const prettyModel = (id: string): string => {
   const wide = /\[1m\]/i.test(id) ? ' 1M' : ''
   const base = id.replace(/\[.*?\]/g, '').trim()
-  if (!base.startsWith('claude-')) return base + wide
+  if (!base.startsWith('claude-')) return base.replace(/^Claude\s+/i, '') + wide
   const parts = base.slice('claude-'.length).split('-').filter(p => !/^\d{8}$/.test(p))
   const words = parts.filter(p => !/^\d+$/.test(p)).map(p => p[0]?.toUpperCase() + p.slice(1))
   const version = parts.filter(p => /^\d+$/.test(p)).join('.')
-  return ['Claude', ...words, version].filter(Boolean).join(' ') + wide
+  return [...words, version].filter(Boolean).join(' ') + wide
 }
 
 const EFFORT_COLORS: Record<string, string> = {
@@ -183,12 +183,6 @@ export const bandLines = (snap: TokenSnapshot, width: number, effort: string | n
     { t: formatTokens(c.tokens), b: c.kind !== 'free', c: c.kind === 'free' ? HAZE : undefined },
   ])
 
-  // Bottom edge: the per-turn trend sits in the frame.
-  const trend: Seg[] =
-    snap.history.length > 1
-      ? [{ t: ' ' }, ...snap.history.map(p => ({ t: spark(p), c: neon(p / 100) })), { t: ' ' }]
-      : []
-
   const W = available
   const inner = W - 4
   // A narrow band drops the model name first, then the effort.
@@ -196,7 +190,7 @@ export const bandLines = (snap: TokenSnapshot, width: number, effort: string | n
   const model = [fullTag, modelTag('', effort), []].find(tag => widthOf(tag) <= room) ?? []
 
   const top = [...title, ...sweep('─', Math.max(0, W - widthOf(title) - widthOf(model) - 2), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
-  const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3 - widthOf(trend), 0, 0.9), ...trend, { t: '─╯', c: PINK }]
+  const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3, 0, 0.9), { t: '─╯', c: PINK }]
   const side = (segs: Seg[]): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
 
   return [top, side(rowOne), side(rowTwo), bottom]
@@ -215,6 +209,22 @@ function refresh($: EngineInterface, isTurnEnd = false): Promise<void> {
     if (inFlight === run) inFlight = null
   })
   return run
+}
+
+const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max']
+
+// The effort setting as /config shows it; turn.step corrects it to what a
+// request is actually sent with.
+async function readEffortSetting($: EngineInterface) {
+  try {
+    const row = (await $.config.list()).find(r => /effort/i.test(r.key) || /effort/i.test(r.label))
+    const value = typeof row?.value === 'string' ? row.value.toLowerCase() : ''
+    if (EFFORTS.includes(value) && (await read($, effortLevel)) !== value) {
+      await update($, effortLevel, () => value)
+    }
+  } catch {
+    // No such row on this build: turn.step fills it in on the next request.
+  }
 }
 
 async function takeReading($: EngineInterface, isTurnEnd: boolean) {
@@ -263,6 +273,7 @@ async function takeReading($: EngineInterface, isTurnEnd: boolean) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
+    void readEffortSetting($)
     await $.command.register({
       name: 'tokens',
       description: 'Token breakdown: no args opens the detail pane; "hide"/"show" toggles the band',
@@ -274,6 +285,7 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
     void refresh($, true)
+    void readEffortSetting($)
     return r
   })
 

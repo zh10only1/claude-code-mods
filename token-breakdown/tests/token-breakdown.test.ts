@@ -47,6 +47,9 @@ const engine = (on: On) => {
   on('session.usage', () => ({ value: USAGE }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('config.list', () => ({
+    value: [{ key: 'effortLevel', label: 'Effort', kind: 'choice', value: 'high', provider: { plugin: 'core', tier: 'core' }, isLocked: false }],
+  }))
   // What the engine would draw when the mod passes.
   on('ui.render', ($, e) => {
     const { Text } = $.ui.resolve(e)
@@ -70,6 +73,7 @@ test('band shows total and each used category; pane itemizes', async ($, on) => 
   expect(await band.find({ type: 'Text', text: /TOOLS 12\.0K/ })).toBeDefined()
   expect(await band.find({ type: 'Text', text: /FREE 115K/ })).toBeDefined()
   expect(await band.find({ type: 'Text', text: /CONTEXT\/\/TOKENS/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /Opus 5\.5 ◆ HIGH/ })).toBeDefined()
   expect(await band.find({ type: 'Text', text: /MCP/ })).toBeUndefined()
   await band.unmount()
 
@@ -109,13 +113,15 @@ test('the frame spans the band; the meter stays short; model and effort sit top 
   }
   const wide = bandLines(snap, 200, 'high').map(l => l.map(s => s.t).join(''))
   expect((wide[1]?.match(/[▰▱]/g) ?? []).length).toBe(30)
-  expect(wide[0]).toMatch(/Claude Opus 5\.5 ◆ HIGH ─╮$/)
+  expect(wide[0]).toMatch(/─ Opus 5\.5 ◆ HIGH ─╮$/)
+  expect(wide[3]).toMatch(/^╰─+╯$/)
   for (const line of bandLines({ ...snap, percent: 91 }, 120)) expect(widthOf(line)).toBe(120)
 })
 
 test('model ids read as names', () => {
-  expect(prettyModel('claude-opus-5-5')).toBe('Claude Opus 5.5')
-  expect(prettyModel('claude-sonnet-4-5-20250929')).toBe('Claude Sonnet 4.5')
-  expect(prettyModel('claude-opus-5-5[1m]')).toBe('Claude Opus 5.5 1M')
+  expect(prettyModel('claude-opus-5-5')).toBe('Opus 5.5')
+  expect(prettyModel('claude-sonnet-4-5-20250929')).toBe('Sonnet 4.5')
+  expect(prettyModel('claude-opus-5-5[1m]')).toBe('Opus 5.5 1M')
+  expect(prettyModel('Claude Opus 5.5')).toBe('Opus 5.5')
   expect(prettyModel('Opus 5.5')).toBe('Opus 5.5')
 })
