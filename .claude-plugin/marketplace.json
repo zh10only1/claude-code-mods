@@ -1,0 +1,14 @@
+{
+  "name": "zh10only1-mods",
+  "description": "zh10only1's Claude Code mods",
+  "owner": {
+    "name": "zh10only1"
+  },
+  "plugins": [
+    {
+      "name": "token-breakdown",
+      "source": "./token-breakdown",
+      "description": "Always-on context token breakdown above the prompt, with a /tokens detail pane"
+    }
+  ]
+}
