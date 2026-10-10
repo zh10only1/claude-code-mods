@@ -54,6 +54,7 @@ This shows what `/context` shows, without having to run it. It's a framed neon H
 
   ![neon meter at 18%, 55% and 92%](docs/neon-meter.png)
 
+- **The figures** sit beside the meter. The percentage turns yellow at 60% and pink at 85%, where a `⚠ COMPACT SOON` flag also appears. `▲` shows the tokens added this turn.
 - **The readout** gives each category's size: system prompt, tools, MCP, memory, skills, messages and free space.
 
 Commands:
