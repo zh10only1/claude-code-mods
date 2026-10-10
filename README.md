@@ -49,7 +49,10 @@ This shows what `/context` shows, without having to run it. It's a framed neon H
 ╰────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
-- **The frame** glows from neon cyan on the left to hot pink on the right, so the HUD stands apart from the chat. It spans the full width, with the model (`Opus 5.5`) and the reasoning effort it runs at (`◆ HIGH`) in the top-right corner.
+- **The frame** glows from neon cyan on the left to hot pink on the right, so the HUD stands apart from the chat. In Ghostty and kitty it's drawn as a real neon tube, with a white-hot line and a soft glow:
+
+  ![neon frame](docs/neon-frame.png)
+ It spans the full width, with the model (`Opus 5.5`) and the reasoning effort it runs at (`◆ HIGH`) in the top-right corner.
 - **The meter** is 30 cells long. In terminals that can draw real images (**Ghostty**, **kitty**), it's a pixel-drawn neon bar: slanted segments with open gaps, a thin white-hot line through vivid cyan → violet → hot-pink segments, and a neon glow that blooms around the lit stretch. Unlit segments stay dark. Everywhere else, including inside tmux, it falls back to a one-row character bar in the same gradient.
 
   ![neon meter at 26%, 60% and 92%](docs/neon-meter.png)

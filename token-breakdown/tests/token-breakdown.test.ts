@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { bandLines, neonImage, prettyModel, widthOf } from '../hooks/register'
+import { bandLines, framePieces, neonImage, prettyModel, widthOf } from '../hooks/register'
 import type { On, RenderElement, SessionUsage } from 'claude-code'
 
 const USAGE: SessionUsage = {
@@ -132,8 +132,10 @@ test('in Ghostty the meter is a real image; elsewhere it stays glyphs', async ($
   await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
   await $.command.run({ command: 'tokens', args: '', ...RUN })
   const band = await $.ui.mount({ plugin: 'token-breakdown', surface: 'terminal', ...BAND })
-  expect(await band.find({ type: 'Image' })).toBeDefined()
+  expect((await band.findAll({ type: 'Image' })).length).toBe(7)
   expect(await band.find({ type: 'Text', text: /52\.0K \/ 200K  26%/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /CONTEXT\/\/TOKENS/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /TOOLS 12\.0K/ })).toBeDefined()
   await band.unmount()
 })
 
@@ -158,4 +160,14 @@ test('the image: lit segments glow, unlit ones do not, gaps stay open', () => {
   expect(Math.max(...Array.from({ length: 150 }, (_, x) => alpha(320 + x, 5)))).toBe(0)
   // Along the unlit core row, some pixels are fully open: the gaps.
   expect(Array.from({ length: 150 }, (_, x) => alpha(320 + x, 16)).some(a => a === 0)).toBe(true)
+})
+
+test('the frame pieces tile every edge of the band exactly', () => {
+  for (const W of [60, 120, 200]) {
+    const pieces = framePieces(W, 21, 18)
+    const top = pieces.filter(p => p.row === 0).reduce((n, p) => n + p.columns, 0)
+    expect(top + 21 + 18).toBe(W)
+    expect(pieces.find(p => p.key === 'frame-b')?.columns).toBe(W)
+    expect(pieces.find(p => p.key === 'frame-r')?.col).toBe(W - 1)
+  }
 })

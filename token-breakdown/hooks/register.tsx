@@ -15,9 +15,9 @@ const METER_WIDTH = 30
 
 // ── Neon palette ────────────────────────────────────────────────────────────
 
-const CYAN = '#05d9e8'
+const CYAN = '#00f6ff'
 const PURPLE = '#7b2cff'
-const MAGENTA = '#d300c5'
+const MAGENTA = '#ff2bd6'
 const PINK = '#ff2a6d'
 const YELLOW = '#fcee0c'
 const TRACK = '#3b1f5c'
@@ -237,6 +237,77 @@ export const neonImage = (fraction: number, columns: number, rows = 1) => {
   return { rgba: (pixels as Uint8Array & { toBase64(): string }).toBase64(), width: W, height: H }
 }
 
+// ── The neon frame (same terminals) ─────────────────────────────────────────
+// The border becomes light too: one rounded-rectangle tube through the middle
+// of the band's edge cells, drawn once on a canvas the band's size and cut into
+// the pieces that sit around the text (the title and model break the top edge).
+
+export type FramePiece = { key: string; col: number; row: number; columns: number; rows: number }
+
+export const framePieces = (W: number, titleCols: number, modelCols: number): FramePiece[] => {
+  const midStart = 2 + titleCols
+  const midCols = Math.max(0, W - 2 - titleCols - modelCols - 2)
+  return [
+    { key: 'frame-tl', col: 0, row: 0, columns: 2, rows: 1 },
+    { key: 'frame-tm', col: midStart, row: 0, columns: midCols, rows: 1 },
+    { key: 'frame-tr', col: W - 2, row: 0, columns: 2, rows: 1 },
+    { key: 'frame-l', col: 0, row: 1, columns: 1, rows: 2 },
+    { key: 'frame-r', col: W - 1, row: 1, columns: 1, rows: 2 },
+    { key: 'frame-b', col: 0, row: 3, columns: W, rows: 1 },
+  ].filter(piece => piece.columns > 0)
+}
+
+export const frameImage = (W: number, piece: FramePiece) => {
+  // Sized so the widest piece stays inside an image's 2048 pixels.
+  const pc = Math.max(4, Math.min(12, Math.floor(2048 / W)))
+  const pr = pc * 2
+  const Wpx = W * pc
+  const width = piece.columns * pc
+  const height = piece.rows * pr
+  // The tube's path: a rounded rectangle through the edge cells' centres.
+  const cx = Wpx / 2
+  const cy = 2 * pr
+  const hx = Wpx / 2 - pc / 2
+  const hy = 1.5 * pr
+  const radius = pc * 1.1
+  const thick = Math.max(1, pc / 6)
+  const near = pc * 0.38
+  const wide = pc * 0.85
+  const white: Rgb = [255, 255, 255]
+
+  const pixels = new Uint8Array(width * height * 4)
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const gx = piece.col * pc + x + 0.5
+      const gy = piece.row * pr + y + 0.5
+      const qx = Math.abs(gx - cx) - (hx - radius)
+      const qy = Math.abs(gy - cy) - (hy - radius)
+      const outside = Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - radius
+      const d = Math.abs(outside)
+      const cover = Math.max(0, Math.min(1, thick + 0.5 - d))
+      const glow = Math.min(0.9, 0.6 * Math.exp(-((d / near) ** 2)) + 0.32 * Math.exp(-((d / wide) ** 2)))
+      const hue = tube(gx / Wpx)
+      const hot = Math.max(0, 1 - d / (thick * 0.7)) * 0.5
+      const core = [0, 1, 2].map(k => hue[k]! + (white[k]! - hue[k]!) * hot) as Rgb
+      const alpha = cover + glow * (1 - cover)
+      if (alpha <= 0.004) continue
+      const o = (y * width + x) * 4
+      for (let k = 0; k < 3; k++) pixels[o + k] = Math.round((core[k]! * cover + hue[k]! * glow * (1 - cover)) / alpha)
+      pixels[o + 3] = Math.round(Math.min(1, alpha) * 255)
+    }
+  }
+  return { rgba: (pixels as Uint8Array & { toBase64(): string }).toBase64(), width, height }
+}
+
+let frameCache: { key: string; pieces: (FramePiece & { source: ReturnType<typeof frameImage> })[] } | null = null
+const cachedFrame = (W: number, titleCols: number, modelCols: number) => {
+  const key = `${W}:${titleCols}:${modelCols}`
+  if (frameCache?.key !== key) {
+    frameCache = { key, pieces: framePieces(W, titleCols, modelCols).map(p => ({ ...p, source: frameImage(W, p) })) }
+  }
+  return frameCache.pieces
+}
+
 // Redrawn only when the bar changes.
 let imageCache: { key: string; source: ReturnType<typeof neonImage> } | null = null
 const cachedNeonImage = (fraction: number, columns: number) => {
@@ -265,7 +336,16 @@ const delta = (snap: TokenSnapshot): Seg[] =>
 //   │ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ SKILLS 1.1K ╱ MSG 32.3K ╱ FREE 115K │
 //   ╰─────────────────────────────────────────────────────── ▁▂▃▄▅▆ ─╯
 
-export type BandParts = { top: Seg[]; figures: Seg[]; meterWidth: number; inner: number; readout: Seg[]; bottom: Seg[] }
+export type BandParts = {
+  top: Seg[]
+  title: Seg[]
+  model: Seg[]
+  figures: Seg[]
+  meterWidth: number
+  inner: number
+  readout: Seg[]
+  bottom: Seg[]
+}
 
 export const side = (segs: Seg[], inner: number): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
 
@@ -312,7 +392,7 @@ export const bandParts = (snap: TokenSnapshot, width: number, effort: string | n
 
   const top = [...title, ...sweep('─', Math.max(0, W - widthOf(title) - widthOf(model) - 2), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
   const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3, 0, 0.9), { t: '─╯', c: PINK }]
-  return { top, figures, meterWidth, inner, readout: rowTwo, bottom }
+  return { top, title: title.slice(1), model, figures, meterWidth, inner, readout: rowTwo, bottom }
 }
 
 // The band as text lines, the meter drawn with glyphs.
@@ -482,23 +562,43 @@ export const register: Register = on => {
 
     if (e.surface === 'terminal' && (await canDrawImages($))) {
       const { Image } = $.ui.resolve(e)
-      const p = bandParts(snap, e.props.bodyColumns, effort)
+      const W = Math.max(30, e.props.bodyColumns)
+      const p = bandParts(snap, W, effort)
+      const title: Seg[] = [{ t: ' ' }, ...p.title, { t: ' ' }]
+      const model = p.model
+      const frame = cachedFrame(W, widthOf(title), widthOf(model))
+      const piece = (key: string) => {
+        const f = frame.find(one => one.key === key)
+        return f ? <Image key={f.key} columns={f.columns} rows={f.rows} source={f.source} alt={' '} /> : ''
+      }
       return (
         <Box flexDirection="column">
-          <Text wrap="truncate">{line(p.top)}</Text>
           <Box flexDirection="row">
-            <Text color={CYAN}>│ </Text>
-            <Image
-              key="meter"
-              columns={p.meterWidth}
-              rows={1}
-              source={cachedNeonImage(snap.percent / 100, p.meterWidth)}
-              alt={'▰'.repeat(Math.round((snap.percent / 100) * p.meterWidth)).padEnd(p.meterWidth, '▱')}
-            />
-            <Text wrap="truncate">{line([...fit(p.figures, p.inner - p.meterWidth), { t: ' │', c: PINK }])}</Text>
+            {piece('frame-tl')}
+            <Text wrap="truncate">{line(title)}</Text>
+            {piece('frame-tm')}
+            <Text wrap="truncate">{line(model)}</Text>
+            {piece('frame-tr')}
           </Box>
-          <Text wrap="truncate">{line(side(p.readout, p.inner))}</Text>
-          <Text wrap="truncate">{line(p.bottom)}</Text>
+          <Box flexDirection="row">
+            {piece('frame-l')}
+            <Box flexDirection="column">
+              <Box flexDirection="row">
+                <Text> </Text>
+                <Image
+                  key="meter"
+                  columns={p.meterWidth}
+                  rows={1}
+                  source={cachedNeonImage(snap.percent / 100, p.meterWidth)}
+                  alt={'▰'.repeat(Math.round((snap.percent / 100) * p.meterWidth)).padEnd(p.meterWidth, '▱')}
+                />
+                <Text wrap="truncate">{line(fit(p.figures, W - 3 - p.meterWidth))}</Text>
+              </Box>
+              <Text wrap="truncate">{line([{ t: ' ' }, ...fit(p.readout, W - 3)])}</Text>
+            </Box>
+            {piece('frame-r')}
+          </Box>
+          {piece('frame-b')}
         </Box>
       )
     }
