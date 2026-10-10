@@ -40,17 +40,19 @@ Or add the marketplace once, then pick mods from it:
 
 ## token-breakdown
 
-This shows what `/context` shows, without having to run it. A live gauge sits above the prompt:
+This shows what `/context` shows, without having to run it. It's a framed neon HUD that sits above the prompt, in a cyberpunk/synthwave style:
 
 ```
-◑ CONTEXT  52.0k / 200k  26%  ▲ 3.1k  ▁▂▂▃▄▅
-████████████████████████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▚▚▚▚▚▚▚▚▚
-● System 3.2k  ● Tools 12.0k  ● Memory 4.5k  ● Skills 1.1k  ● Messages 32.3k  ░ Free 115k
+╭─◢ CONTEXT//TOKENS ◣───────────────────────────────────────────── claude-opus-5-5 ─╮
+│ ▰▰▰▰▰▰▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  52.0K / 200K  26%  ▲3.1K │
+│ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ MSG 32.3K ╱ FREE 115K                           │
+╰──────────────────────────────────────────────────────────────────────── ▂▂▃▄▅ ─╯
 ```
 
-- **The header** has a moon that fills as the window fills (○ ◔ ◑ ◕ ●). The percentage shifts from green to amber to red as it climbs. You also get the tokens added this turn and a sparkline of recent turns.
-- **The ribbon** shows the whole window as one stacked bar. Each category gets its own colour, then the free space (`░`) and the autocompact reserve (`▚`).
-- **The legend** shows each category's colour and size.
+- **The frame** glows from neon cyan on the left to hot pink on the right, so the HUD stands apart from the chat.
+- **The meter** fills along a cyan → purple → pink gradient, so a nearly full window reads hot. The percentage turns yellow at 60% and pink at 85%, where a `⚠ COMPACT SOON` flag also appears. `▲` shows the tokens added this turn.
+- **The readout** gives each category's size: system prompt, tools, MCP, memory, skills, messages and free space.
+- **The bottom edge** carries a sparkline of your recent turns.
 
 Commands:
 

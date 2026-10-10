@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { ribbon } from '../hooks/register'
+import { bandLines, widthOf } from '../hooks/register'
 import type { On, RenderElement, SessionUsage } from 'claude-code'
 
 const USAGE: SessionUsage = {
@@ -65,11 +65,12 @@ test('band shows total and each used category; pane itemizes', async ($, on) => 
   await $.command.run({ command: 'tokens', args: '', ...RUN })
 
   const band = await $.ui.mount({ plugin: 'token-breakdown', surface: 'terminal', ...BAND })
-  expect(await band.find({ type: 'Text', text: /CONTEXT  52\.0k \/ 200k  26%/ })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: /Messages 32\.3k/ })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: /Tools 12\.0k/ })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: /Free 115k/ })).toBeDefined()
-  expect(await band.find({ type: 'Text', text: /MCP tools/ })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: /52\.0K \/ 200K  26%/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /MSG 32\.3K/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /TOOLS 12\.0K/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /FREE 115K/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /CONTEXT\/\/TOKENS/ })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /MCP/ })).toBeUndefined()
   await band.unmount()
 
   const pane = await $.ui.mount({
@@ -79,7 +80,7 @@ test('band shows total and each used category; pane itemizes', async ($, on) => 
     requestId: 'token-breakdown',
     props: { title: 'Tokens', isFocused: false, bodyColumns: 70, placement: 'dock', scroll: { offset: 0, bodyRows: 30 }, view: {} },
   })
-  expect(await pane.find({ type: 'Text', text: /outside the window.*MCP tools 9\.0k/ })).toBeDefined()
+  expect(await pane.find({ type: 'Text', text: /ON DEMAND MCP 9\.0K/ })).toBeDefined()
   expect(await pane.find({ type: 'Text', text: /apify/ })).toBeDefined()
   await pane.unmount()
 })
@@ -90,21 +91,21 @@ test('/tokens hide removes the band', async ($, on) => {
   await $.command.run({ command: 'tokens', args: '', ...RUN })
   await $.command.run({ command: 'tokens', args: 'hide', ...RUN })
   const band = await $.ui.mount({ plugin: 'token-breakdown', surface: 'terminal', ...BAND })
-  expect(await band.find({ type: 'Text', text: /Context/ })).toBeUndefined()
+  expect(await band.find({ type: 'Text', text: /CONTEXT/ })).toBeUndefined()
   expect(await band.find({ type: 'Text', text: 'engine' })).toBeDefined()
   await band.unmount()
 })
 
-test('the ribbon fills its width exactly and keeps every used category visible', () => {
+test('the frame closes: every band line is exactly the width it is given', () => {
   const snap = {
-    total: 0, window: 200_000, percent: 26, model: '', memoryFiles: [], mcpServers: [], skills: [],
-    delta: 0, history: [], turnBase: 0, at: 0,
+    total: 52_000, window: 200_000, percent: 26, model: 'claude-opus-5-5', memoryFiles: [], mcpServers: [], skills: [],
+    delta: 3_100, history: [10, 14, 19, 26], turnBase: 48_900, at: 0,
     categories: USAGE.context.breakdown!.categories.map(c => ({ name: c.name, tokens: c.tokens, color: c.color, kind: c.kind })),
   }
-  for (const width of [20, 57, 80, 143]) {
-    const segments = ribbon(snap, width)
-    expect(segments.reduce((sum, s) => sum + s.cells, 0)).toBe(width)
-    for (const s of segments.filter(s => s.glyph === '█')) expect(s.cells).toBeGreaterThan(0)
-    expect(segments.some(s => s.key === 'MCP tools')).toBe(false)
+  for (const width of [40, 57, 80, 143]) {
+    const lines = bandLines(snap, width)
+    expect(lines.length).toBe(4)
+    for (const line of lines) expect(widthOf(line)).toBe(width)
   }
+  for (const line of bandLines({ ...snap, percent: 91 }, 120)) expect(widthOf(line)).toBe(120)
 })

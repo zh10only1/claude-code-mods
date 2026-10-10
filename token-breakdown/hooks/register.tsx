@@ -11,35 +11,34 @@ const isBandHidden = atom({ plugin: 'token-breakdown', key: 'isBandHidden' } as 
 const TOOL_REFRESH_MS = 3000
 const HISTORY_LENGTH = 16
 
-// ── Palette ─────────────────────────────────────────────────────────────────
-// Mid-tone colours that read on dark and light terminals alike.
+// ── Neon palette ────────────────────────────────────────────────────────────
 
-const PALETTE: Record<string, { color: string; short: string }> = {
-  'System prompt': { color: '#c4a7e7', short: 'System' },
-  'System tools': { color: '#7aa2f7', short: 'Tools' },
-  'MCP tools': { color: '#7dcfff', short: 'MCP' },
-  'Custom agents': { color: '#bb9af7', short: 'Agents' },
-  'Memory files': { color: '#e0af68', short: 'Memory' },
-  Skills: { color: '#9ece6a', short: 'Skills' },
-  Messages: { color: '#f7768e', short: 'Messages' },
+const CYAN = '#05d9e8'
+const PURPLE = '#7b2cff'
+const MAGENTA = '#d300c5'
+const PINK = '#ff2a6d'
+const YELLOW = '#fcee0c'
+const TRACK = '#3b1f5c'
+const HAZE = '#8a6fb3'
+
+const LABELS: Record<string, string> = {
+  'System prompt': 'SYS',
+  'System tools': 'TOOLS',
+  'MCP tools': 'MCP',
+  'Custom agents': 'AGENTS',
+  'Memory files': 'MEM',
+  Skills: 'SKILLS',
+  Messages: 'MSG',
+  'Free space': 'FREE',
+  'Autocompact buffer': 'BUFFER',
 }
-const FALLBACK = ['#2ac3de', '#ff9e64', '#73daca', '#b4f9f8', '#ff007c']
-const FREE = '#565f89'
-const BUFFER = '#9d7cd8'
-const MUTED = '#737aa2'
-
-const GREEN = '#9ece6a'
-const AMBER = '#e0af68'
-const RED = '#f7768e'
-
-const styleOf = (name: string, index: number) =>
-  PALETTE[name] ?? { color: FALLBACK[index % FALLBACK.length] ?? MUTED, short: name }
+const labelOf = (name: string) => LABELS[name] ?? name.toUpperCase()
 
 // ── Formatting ──────────────────────────────────────────────────────────────
 
 export const formatTokens = (n: number): string => {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`
-  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 0 : 1)}k`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 100_000 ? 0 : 1)}K`
   return String(Math.round(n))
 }
 
@@ -49,51 +48,126 @@ const mix = (a: string, z: string, t: number) => {
   return `#${x.map((v, i) => Math.round(v + ((y[i] ?? v) - v) * t).toString(16).padStart(2, '0')).join('')}`
 }
 
-// Green → amber → red as the window fills.
-export const heat = (percent: number): string => {
-  const p = Math.max(0, Math.min(100, percent))
-  return p < 50 ? mix(GREEN, AMBER, p / 50) : mix(AMBER, RED, (p - 50) / 50)
+// Synthwave sweep: cyan → purple → pink, t from 0 to 1.
+export const neon = (t: number): string => {
+  const p = Math.max(0, Math.min(1, t))
+  return p < 0.5 ? mix(CYAN, PURPLE, p / 0.5) : mix(PURPLE, PINK, (p - 0.5) / 0.5)
 }
 
-const MOONS = ['○', '◔', '◑', '◕', '●']
-const moon = (percent: number) => MOONS[Math.min(4, Math.floor(percent / 20))] ?? '●'
+const levelColor = (percent: number) => (percent >= 85 ? PINK : percent >= 60 ? YELLOW : CYAN)
 
 const SPARKS = '▁▂▃▄▅▆▇█'
 const spark = (percent: number) => SPARKS[Math.max(0, Math.min(7, Math.round((percent / 100) * 7)))] ?? '▁'
 
 const shortPath = (p: string) => p.replace(/^\/(Users|home)\/[^/]+/, '~')
 
-// ── The ribbon: the whole window as one stacked bar ─────────────────────────
+// ── Lines as plain segments ─────────────────────────────────────────────────
+// Every line is built as coloured segments first, so its width is known
+// exactly and the hand-drawn frame always closes.
 
-type Segment = { key: string; cells: number; color: string; glyph: string }
+export type Seg = { t: string; c?: string; b?: boolean }
 
-// Largest-remainder split of `width` cells, every non-empty used row getting
-// at least one so a small category never vanishes.
-export const ribbon = (snap: TokenSnapshot, width: number): Segment[] => {
-  const rows = snap.categories.filter(c => c.kind !== 'deferred' && c.tokens > 0)
-  const window = rows.reduce((sum, c) => sum + c.tokens, 0) || 1
-  const exact = rows.map(c => (c.tokens / window) * width)
-  const cells = exact.map((x, i) => Math.max(rows[i]?.kind === 'used' ? 1 : 0, Math.floor(x)))
-  let left = width - cells.reduce((a, b) => a + b, 0)
-  const order = exact.map((x, i) => ({ i, r: x - Math.floor(x) })).sort((a, z) => z.r - a.r)
-  for (let k = 0; left > 0 && order.length > 0; k = (k + 1) % order.length, left--) {
-    const i = order[k]?.i ?? 0
-    cells[i] = (cells[i] ?? 0) + 1
-  }
-  // Over budget from the minimums: take it back from the free space.
-  const free = rows.findIndex(c => c.kind === 'free')
-  if (left < 0 && free >= 0) cells[free] = Math.max(0, (cells[free] ?? 0) + left)
+export const widthOf = (segs: Seg[]) => segs.reduce((n, s) => n + [...s.t].length, 0)
 
-  let used = 0
-  return rows.map((c, i) => {
-    const style = c.kind === 'used' ? styleOf(c.name, used++) : null
-    return {
-      key: c.name,
-      cells: cells[i] ?? 0,
-      color: style?.color ?? (c.kind === 'free' ? FREE : BUFFER),
-      glyph: c.kind === 'used' ? '█' : c.kind === 'free' ? '░' : '▚',
+// Cuts or pads a run of segments to exactly `width` cells.
+export const fit = (segs: Seg[], width: number): Seg[] => {
+  const out: Seg[] = []
+  let left = width
+  for (const s of segs) {
+    if (left <= 0) break
+    const chars = [...s.t]
+    if (chars.length <= left) {
+      out.push(s)
+      left -= chars.length
+    } else {
+      out.push({ ...s, t: `${chars.slice(0, Math.max(0, left - 1)).join('')}…` })
+      left = 0
     }
-  })
+  }
+  if (left > 0) out.push({ t: ' '.repeat(left) })
+  return out
+}
+
+// A run of `glyph` whose colour sweeps the neon gradient from t0 to t1,
+// grouped into a few steps so the tree stays small.
+const sweep = (glyph: string, count: number, t0: number, t1: number, steps = 24): Seg[] => {
+  const out: Seg[] = []
+  for (let i = 0; i < count; ) {
+    const run = Math.max(1, Math.ceil(count / steps))
+    const n = Math.min(run, count - i)
+    out.push({ t: glyph.repeat(n), c: neon(t0 + ((t1 - t0) * (i + n / 2)) / Math.max(1, count)) })
+    i += n
+  }
+  return out
+}
+
+// The meter: filled cells take the gradient by position, so the bar turns
+// from cyan to hot pink as the window fills.
+export const meter = (fraction: number, width: number): Seg[] => {
+  const filled = Math.max(0, Math.min(width, Math.round(fraction * width)))
+  return [...sweep('▰', filled, 0, filled / Math.max(1, width)), { t: '▱'.repeat(width - filled), c: TRACK }]
+}
+
+const delta = (snap: TokenSnapshot): Seg[] =>
+  snap.delta === 0
+    ? []
+    : [{ t: `  ${snap.delta > 0 ? '▲' : '▼'}${formatTokens(Math.abs(snap.delta))}`, c: snap.delta > 0 ? MAGENTA : CYAN }]
+
+// ── The band: a framed HUD ──────────────────────────────────────────────────
+//   ╭─◢ CONTEXT//TOKENS ◣──────────────────────────── claude-opus-5-5 ─╮
+//   │ ▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  52.0K / 200K  26%  ▲3.1K │
+//   │ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ SKILLS 1.1K ╱ MSG 32.3K ╱ FREE 115K │
+//   ╰─────────────────────────────────────────────────────── ▁▂▃▄▅▆ ─╯
+
+export const bandLines = (snap: TokenSnapshot, width: number): Seg[][] => {
+  const W = Math.max(30, width)
+  const inner = W - 4
+  const level = levelColor(snap.percent)
+
+  // Top edge: title, a sweeping rule, the model.
+  const title: Seg[] = [
+    { t: '╭─', c: CYAN },
+    { t: '◢ ', c: PINK },
+    { t: 'CONTEXT', c: CYAN, b: true },
+    { t: '//', c: MAGENTA, b: true },
+    { t: 'TOKENS', c: PINK, b: true },
+    { t: ' ◣', c: PINK },
+  ]
+  const model: Seg[] = snap.model ? [{ t: ` ${snap.model} `, c: HAZE }] : []
+  const topRule = W - widthOf(title) - widthOf(model) - 2
+  const top = [...title, ...sweep('─', Math.max(0, topRule), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
+
+  // Row one: the meter and the figures.
+  const figures: Seg[] = [
+    { t: '  ' },
+    { t: formatTokens(snap.total), b: true },
+    { t: ' / ', c: HAZE },
+    { t: formatTokens(snap.window), c: HAZE },
+    { t: `  ${snap.percent}%`, c: level, b: true },
+    ...delta(snap),
+    ...(snap.percent >= 85 ? [{ t: '  ⚠ COMPACT SOON', c: PINK, b: true }] : []),
+  ]
+  const meterWidth = Math.max(8, inner - widthOf(figures))
+  const rowOne = [...meter(snap.percent / 100, meterWidth), ...figures]
+
+  // Row two: each category's readout.
+  const shown = snap.categories.filter(c => (c.kind === 'used' || c.kind === 'free') && c.tokens > 0)
+  const rowTwo: Seg[] = shown.flatMap((c, i) => [
+    ...(i > 0 ? [{ t: ' ╱ ', c: PURPLE }] : []),
+    { t: `${labelOf(c.name)} `, c: c.kind === 'free' ? HAZE : CYAN },
+    { t: formatTokens(c.tokens), b: c.kind !== 'free', c: c.kind === 'free' ? HAZE : undefined },
+  ])
+
+  // Bottom edge: the per-turn trend sits in the frame.
+  const trend: Seg[] =
+    snap.history.length > 1
+      ? [{ t: ' ' }, ...snap.history.map(p => ({ t: spark(p), c: neon(p / 100) })), { t: ' ' }]
+      : []
+  const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3 - widthOf(trend), 0, 0.9), ...trend, { t: '─╯', c: PINK }]
+
+  const side = (segs: Seg[]): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
+
+  return [top, side(rowOne), side(rowTwo), bottom]
 }
 
 // ── Readings ────────────────────────────────────────────────────────────────
@@ -207,10 +281,8 @@ export const register: Register = on => {
     return { text: 'Token breakdown pane opened.' }
   })
 
+
   // ── Band above the prompt ─────────────────────────────────────────────────
-  //   ◑ CONTEXT  52.0k / 200k  26%  +3.1k  ▁▂▃▅▆
-  //   ██████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░▚▚▚▚▚▚▚
-  //   ● System 3.2k  ● Tools 12.0k  ● Memory 4.5k  ● Messages 32.3k  ░ Free 115k
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.props.hasSurvey || (await read($, isBandHidden))) return next(e)
@@ -218,70 +290,17 @@ export const register: Register = on => {
     if (!snap) return next(e)
 
     const { Box, Text } = $.ui.resolve(e)
-    const width = Math.max(10, e.props.bodyColumns - 1)
-    const tone = heat(snap.percent)
-    const used = snap.categories.filter(c => c.kind === 'used' && c.tokens > 0)
-    const free = snap.categories.find(c => c.kind === 'free')
-
     return (
       <Box flexDirection="column">
-        <Text wrap="truncate">
-          <Text color={tone}>{moon(snap.percent)} </Text>
-          <Text bold color={tone}>
-            CONTEXT
-          </Text>
-          <Text color={MUTED}>{'  '}</Text>
-          <Text bold>{formatTokens(snap.total)}</Text>
-          <Text color={MUTED}> / {formatTokens(snap.window)}</Text>
-          <Text bold color={tone}>
-            {'  '}
-            {snap.percent}%
-          </Text>
-          {snap.delta !== 0 ? (
-            <Text color={snap.delta > 0 ? AMBER : GREEN}>
-              {'  '}
-              {snap.delta > 0 ? '▲' : '▼'} {formatTokens(Math.abs(snap.delta))}
-            </Text>
-          ) : (
-            ''
-          )}
-          {snap.history.length > 1 ? (
-            <Text>
-              {'  '}
-              {snap.history.map(p => (
-                <Text color={heat(p)}>{spark(p)}</Text>
-              ))}
-            </Text>
-          ) : (
-            ''
-          )}
-        </Text>
-        <Text wrap="truncate">
-          {ribbon(snap, width).map(s => (
-            <Text color={s.color}>{s.glyph.repeat(s.cells)}</Text>
-          ))}
-        </Text>
-        <Text wrap="wrap">
-          {used.map((c, i) => {
-            const style = styleOf(c.name, i)
-            return (
-              <Text>
-                <Text color={style.color}>● </Text>
-                <Text color={MUTED}>{style.short} </Text>
-                <Text bold>{formatTokens(c.tokens)}</Text>
-                {'  '}
+        {bandLines(snap, e.props.bodyColumns).map(line => (
+          <Text wrap="truncate">
+            {line.map(s => (
+              <Text color={s.c} bold={s.b}>
+                {s.t}
               </Text>
-            )
-          })}
-          {free ? (
-            <Text>
-              <Text color={FREE}>░ </Text>
-              <Text color={MUTED}>Free {formatTokens(free.tokens)}</Text>
-            </Text>
-          ) : (
-            ''
-          )}
-        </Text>
+            ))}
+          </Text>
+        ))}
       </Box>
     )
   })
@@ -291,111 +310,102 @@ export const register: Register = on => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
     const snap = await read($, snapshot)
-    if (!snap) return <Text color={MUTED}>No reading yet: it arrives after the first response.</Text>
+    if (!snap) return <Text color={HAZE}>// NO SIGNAL — first reading lands after the next response</Text>
 
-    const cols = Math.max(30, e.props.bodyColumns)
-    const tone = heat(snap.percent)
-    const nameWidth = 18
-    const barWidth = Math.max(6, cols - nameWidth - 18)
-    const rows = snap.categories.filter(c => c.kind !== 'deferred')
-    const deferred = snap.categories.filter(c => c.kind === 'deferred' && c.tokens > 0)
-    const largest = Math.max(1, ...rows.map(c => c.tokens))
-
-    let usedIndex = 0
-    const row = (c: TokenCategory) => {
-      const color = c.kind === 'used' ? styleOf(c.name, usedIndex++).color : c.kind === 'free' ? FREE : BUFFER
-      const filled = Math.max(c.tokens > 0 ? 1 : 0, Math.round((c.tokens / largest) * barWidth))
-      const share = snap.window > 0 ? ((c.tokens / snap.window) * 100).toFixed(1) : '0.0'
-      return (
-        <Text wrap="truncate">
-          <Text color={color}>● </Text>
-          <Text color={c.kind === 'used' ? undefined : MUTED}>{c.name.padEnd(nameWidth).slice(0, nameWidth)}</Text>
-          <Text color={color}>{'━'.repeat(filled)}</Text>
-          <Text color={FREE}>{'─'.repeat(barWidth - filled)}</Text>
-          <Text bold> {formatTokens(c.tokens).padStart(6)}</Text>
-          <Text color={MUTED}> {share.padStart(5)}%</Text>
-        </Text>
-      )
-    }
-
-    const section = (title: string, color: string) => (
-      <Text>
-        <Text color={color}>▍</Text>
-        <Text bold color={color}>
-          {title}
-        </Text>
+    const W = Math.max(30, e.props.bodyColumns)
+    const draw = (segs: Seg[]) => (
+      <Text wrap="truncate">
+        {fit(segs, W).map(s => (
+          <Text color={s.c} bold={s.b}>
+            {s.t}
+          </Text>
+        ))}
       </Text>
     )
-    const branch = (i: number, n: number) => <Text color={FREE}>{i === n - 1 ? '└─ ' : '├─ '}</Text>
+    const heading = (title: string): Seg[] => [
+      { t: '◢ ', c: PINK },
+      { t: title, c: MAGENTA, b: true },
+      { t: ' ', c: PURPLE },
+      ...sweep('─', Math.max(0, W - title.length - 3), 0.2, 0.9),
+    ]
+    const branch = (i: number, n: number): Seg => ({ t: i === n - 1 ? ' └─ ' : ' ├─ ', c: PURPLE })
+
+    // Header and the big meter.
+    const figures: Seg[] = [
+      { t: '  ' },
+      { t: formatTokens(snap.total), b: true },
+      { t: ' / ', c: HAZE },
+      { t: formatTokens(snap.window), c: HAZE },
+      { t: `  ${snap.percent}%`, c: levelColor(snap.percent), b: true },
+      ...delta(snap),
+    ]
+
+    // Categories: one meter each, scaled to the largest row.
+    const rows = snap.categories.filter(c => c.kind !== 'deferred')
+    const largest = Math.max(1, ...rows.map(c => c.tokens))
+    const barWidth = Math.max(6, W - 30)
+    const row = (c: TokenCategory): Seg[] => {
+      const isUsed = c.kind === 'used'
+      const share = snap.window > 0 ? ((c.tokens / snap.window) * 100).toFixed(1) : '0.0'
+      const cells = Math.min(barWidth, Math.round((c.tokens / largest) * barWidth))
+      const bar: Seg[] = isUsed
+        ? meter(c.tokens / largest, barWidth)
+        : [{ t: (c.kind === 'free' ? '▱' : '▚').repeat(cells), c: TRACK }, { t: ' '.repeat(barWidth - cells) }]
+      return [
+        { t: ` ${labelOf(c.name).padEnd(8)}`, c: isUsed ? CYAN : HAZE, b: isUsed },
+        ...bar,
+        { t: formatTokens(c.tokens).padStart(8), b: isUsed, c: isUsed ? undefined : HAZE },
+        { t: `${share.padStart(6)}%`, c: HAZE },
+      ]
+    }
+
+    const deferred = snap.categories.filter(c => c.kind === 'deferred' && c.tokens > 0)
     const memory = snap.memoryFiles.slice(0, 6)
     const servers = snap.mcpServers.slice(0, 6)
     const skills = snap.skills.slice(0, 5)
 
     return (
       <Box flexDirection="column">
-        <Text wrap="truncate">
-          <Text color={tone}>{moon(snap.percent)} </Text>
-          <Text bold color={tone}>
-            CONTEXT WINDOW
-          </Text>
-          <Text color={MUTED}>{'  '}{snap.model}</Text>
-        </Text>
-        <Text wrap="truncate">
-          <Text bold>{formatTokens(snap.total)}</Text>
-          <Text color={MUTED}> of {formatTokens(snap.window)}</Text>
-          <Text bold color={tone}>
-            {'  '}
-            {snap.percent}%
-          </Text>
-          {snap.delta !== 0 ? (
-            <Text color={snap.delta > 0 ? AMBER : GREEN}>
-              {'  '}
-              {snap.delta > 0 ? '▲' : '▼'} {formatTokens(Math.abs(snap.delta))} this turn
-            </Text>
-          ) : (
-            ''
-          )}
-        </Text>
-        <Text wrap="truncate">
-          {ribbon(snap, cols - 1).map(s => (
-            <Text color={s.color}>{s.glyph.repeat(s.cells)}</Text>
-          ))}
-        </Text>
-        {snap.history.length > 1 ? (
-          <Text wrap="truncate">
-            <Text color={MUTED}>last {snap.history.length} turns </Text>
-            {snap.history.map(p => (
-              <Text color={heat(p)}>{spark(p)}</Text>
-            ))}
-          </Text>
-        ) : (
-          ''
-        )}
+        {draw([
+          { t: '◢ ', c: PINK },
+          { t: 'CONTEXT', c: CYAN, b: true },
+          { t: '//', c: MAGENTA, b: true },
+          { t: 'TOKENS', c: PINK, b: true },
+          { t: ' ◣  ', c: PINK },
+          { t: snap.model, c: HAZE },
+        ])}
+        {draw([...meter(snap.percent / 100, Math.max(8, W - widthOf(figures))), ...figures])}
+        {snap.history.length > 1
+          ? draw([
+              { t: 'TREND ', c: HAZE },
+              ...snap.history.map(p => ({ t: spark(p), c: neon(p / 100) })),
+              { t: `  last ${snap.history.length} turns`, c: HAZE },
+            ])
+          : ''}
 
         <Box flexDirection="column" marginTop={1}>
-          {section('CATEGORIES', '#7aa2f7')}
-          {rows.map(row)}
-          {deferred.length > 0 ? (
-            <Text color={MUTED} wrap="truncate">
-              {'  '}on demand, outside the window:{' '}
-              {deferred.map(c => `${c.name} ${formatTokens(c.tokens)}`).join(' · ')}
-            </Text>
-          ) : (
-            ''
-          )}
+          {draw(heading('CATEGORIES'))}
+          {rows.map(c => draw(row(c)))}
+          {deferred.length > 0
+            ? draw([
+                { t: ' ON DEMAND ', c: HAZE },
+                { t: deferred.map(c => `${labelOf(c.name)} ${formatTokens(c.tokens)}`).join(' ╱ '), c: HAZE },
+                { t: '  (outside the window)', c: TRACK },
+              ])
+            : ''}
         </Box>
 
         {memory.length > 0 ? (
           <Box flexDirection="column" marginTop={1}>
-            {section('MEMORY FILES', '#e0af68')}
-            {memory.map((f, i) => (
-              <Text wrap="truncate-middle">
-                {branch(i, memory.length)}
-                <Text bold>{formatTokens(f.tokens).padStart(6)}</Text>
-                <Text color="#e0af68"> {f.type.padEnd(8)}</Text>
-                <Text color={MUTED}>{shortPath(f.path)}</Text>
-              </Text>
-            ))}
+            {draw(heading('MEMORY FILES'))}
+            {memory.map((f, i) =>
+              draw([
+                branch(i, memory.length),
+                { t: formatTokens(f.tokens).padStart(6), b: true },
+                { t: ` ${f.type.toUpperCase().padEnd(8)}`, c: CYAN },
+                { t: shortPath(f.path), c: HAZE },
+              ]),
+            )}
           </Box>
         ) : (
           ''
@@ -403,15 +413,15 @@ export const register: Register = on => {
 
         {servers.length > 0 ? (
           <Box flexDirection="column" marginTop={1}>
-            {section('MCP SERVERS', '#7dcfff')}
-            {servers.map((s, i) => (
-              <Text wrap="truncate">
-                {branch(i, servers.length)}
-                <Text bold>{formatTokens(s.tokens).padStart(6)}</Text>
-                <Text color="#7dcfff"> {s.name}</Text>
-                <Text color={MUTED}> · {s.tools} tools</Text>
-              </Text>
-            ))}
+            {draw(heading('MCP SERVERS'))}
+            {servers.map((s, i) =>
+              draw([
+                branch(i, servers.length),
+                { t: formatTokens(s.tokens).padStart(6), b: true },
+                { t: ` ${s.name}`, c: CYAN },
+                { t: ` ╱ ${s.tools} tools`, c: HAZE },
+              ]),
+            )}
           </Box>
         ) : (
           ''
@@ -419,22 +429,16 @@ export const register: Register = on => {
 
         {skills.length > 0 ? (
           <Box flexDirection="column" marginTop={1}>
-            {section('TOP SKILLS', '#9ece6a')}
-            {skills.map((s, i) => (
-              <Text wrap="truncate">
-                {branch(i, skills.length)}
-                <Text bold>{formatTokens(s.tokens).padStart(6)}</Text>
-                <Text color="#9ece6a"> {s.name}</Text>
-              </Text>
-            ))}
+            {draw(heading('TOP SKILLS'))}
+            {skills.map((s, i) =>
+              draw([branch(i, skills.length), { t: formatTokens(s.tokens).padStart(6), b: true }, { t: ` ${s.name}`, c: CYAN }]),
+            )}
           </Box>
         ) : (
           ''
         )}
 
-        <Box marginTop={1}>
-          <Text color={FREE}>estimated like /context · /tokens hide · /tokens show</Text>
-        </Box>
+        <Box marginTop={1}>{draw([{ t: '// estimated like /context ╱ /tokens hide ╱ /tokens show', c: PURPLE }])}</Box>
       </Box>
     )
   })
