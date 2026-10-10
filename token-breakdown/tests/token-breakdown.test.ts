@@ -96,7 +96,7 @@ test('/tokens hide removes the band', async ($, on) => {
   await band.unmount()
 })
 
-test('the frame closes: every band line is exactly the width it is given', () => {
+test('the frame closes and hugs its content, never wider than the band', () => {
   const snap = {
     total: 52_000, window: 200_000, percent: 26, model: 'claude-opus-5-5', memoryFiles: [], mcpServers: [], skills: [],
     delta: 3_100, history: [10, 14, 19, 26], turnBase: 48_900, at: 0,
@@ -105,7 +105,12 @@ test('the frame closes: every band line is exactly the width it is given', () =>
   for (const width of [40, 57, 80, 143]) {
     const lines = bandLines(snap, width)
     expect(lines.length).toBe(4)
-    for (const line of lines) expect(widthOf(line)).toBe(width)
+    const frame = widthOf(lines[0] ?? [])
+    expect(frame).toBeLessThanOrEqual(width)
+    for (const line of lines) expect(widthOf(line)).toBe(frame)
   }
-  for (const line of bandLines({ ...snap, percent: 91 }, 120)) expect(widthOf(line)).toBe(120)
+  // On a wide terminal the meter stays short and the frame stays compact.
+  expect(widthOf(bandLines(snap, 200)[0] ?? [])).toBeLessThan(80)
+  const hot = bandLines({ ...snap, percent: 91 }, 120)
+  for (const line of hot) expect(widthOf(line)).toBe(widthOf(hot[0] ?? []))
 })

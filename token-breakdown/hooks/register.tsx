@@ -10,6 +10,7 @@ const isBandHidden = atom({ plugin: 'token-breakdown', key: 'isBandHidden' } as 
 // Refreshes triggered by tool calls are throttled; turn ends always refresh.
 const TOOL_REFRESH_MS = 3000
 const HISTORY_LENGTH = 16
+const METER_WIDTH = 30
 
 // ── Neon palette ────────────────────────────────────────────────────────────
 
@@ -120,11 +121,10 @@ const delta = (snap: TokenSnapshot): Seg[] =>
 //   ╰─────────────────────────────────────────────────────── ▁▂▃▄▅▆ ─╯
 
 export const bandLines = (snap: TokenSnapshot, width: number): Seg[][] => {
-  const W = Math.max(30, width)
-  const inner = W - 4
+  const available = Math.max(30, width)
   const level = levelColor(snap.percent)
 
-  // Top edge: title, a sweeping rule, the model.
+  // Title and model, for the top edge.
   const title: Seg[] = [
     { t: '╭─', c: CYAN },
     { t: '◢ ', c: PINK },
@@ -134,10 +134,8 @@ export const bandLines = (snap: TokenSnapshot, width: number): Seg[][] => {
     { t: ' ◣', c: PINK },
   ]
   const model: Seg[] = snap.model ? [{ t: ` ${snap.model} `, c: HAZE }] : []
-  const topRule = W - widthOf(title) - widthOf(model) - 2
-  const top = [...title, ...sweep('─', Math.max(0, topRule), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
 
-  // Row one: the meter and the figures.
+  // Row one: a fixed-length meter and the figures.
   const figures: Seg[] = [
     { t: '  ' },
     { t: formatTokens(snap.total), b: true },
@@ -147,7 +145,7 @@ export const bandLines = (snap: TokenSnapshot, width: number): Seg[][] => {
     ...delta(snap),
     ...(snap.percent >= 85 ? [{ t: '  ⚠ COMPACT SOON', c: PINK, b: true }] : []),
   ]
-  const meterWidth = Math.max(8, inner - widthOf(figures))
+  const meterWidth = Math.max(8, Math.min(METER_WIDTH, available - 4 - widthOf(figures)))
   const rowOne = [...meter(snap.percent / 100, meterWidth), ...figures]
 
   // Row two: each category's readout.
@@ -163,8 +161,19 @@ export const bandLines = (snap: TokenSnapshot, width: number): Seg[][] => {
     snap.history.length > 1
       ? [{ t: ' ' }, ...snap.history.map(p => ({ t: spark(p), c: neon(p / 100) })), { t: ' ' }]
       : []
-  const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3 - widthOf(trend), 0, 0.9), ...trend, { t: '─╯', c: PINK }]
 
+  // The frame hugs its widest line, never wider than the band.
+  const needed = Math.max(
+    widthOf(rowOne) + 4,
+    widthOf(rowTwo) + 4,
+    widthOf(title) + widthOf(model) + 4,
+    widthOf(trend) + 6,
+  )
+  const W = Math.min(available, needed)
+  const inner = W - 4
+
+  const top = [...title, ...sweep('─', Math.max(0, W - widthOf(title) - widthOf(model) - 2), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
+  const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3 - widthOf(trend), 0, 0.9), ...trend, { t: '─╯', c: PINK }]
   const side = (segs: Seg[]): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
 
   return [top, side(rowOne), side(rowTwo), bottom]
@@ -374,7 +383,7 @@ export const register: Register = on => {
           { t: ' ◣  ', c: PINK },
           { t: snap.model, c: HAZE },
         ])}
-        {draw([...meter(snap.percent / 100, Math.max(8, W - widthOf(figures))), ...figures])}
+        {draw([...meter(snap.percent / 100, Math.max(8, Math.min(METER_WIDTH, W - widthOf(figures)))), ...figures])}
         {snap.history.length > 1
           ? draw([
               { t: 'TREND ', c: HAZE },
