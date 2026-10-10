@@ -44,7 +44,7 @@ This shows what `/context` shows, without having to run it. A live gauge sits ab
 
 ```
 ◑ CONTEXT  52.0k / 200k  26%  ▲ 3.1k  ▁▂▂▃▄▅
-████▆▆▆▆▆▆▆▆▆▆▆▆████████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▚▚▚▚▚▚▚▚▚
+████████████████████████████████████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░▚▚▚▚▚▚▚▚▚
 ● System 3.2k  ● Tools 12.0k  ● Memory 4.5k  ● Skills 1.1k  ● Messages 32.3k  ░ Free 115k
 ```
 
