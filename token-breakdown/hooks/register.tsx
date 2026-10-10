@@ -129,65 +129,11 @@ const sweep = (glyph: string, count: number, t0: number, t1: number, steps = 24)
   return out
 }
 
-// The text meter (the pane, and surfaces without Raster): filled cells take
-// the gradient by position, so the bar turns from cyan to hot pink as it fills.
+// The meter: filled cells take the gradient by position, so the bar turns
+// from cyan to hot pink as the window fills.
 export const meter = (fraction: number, width: number): Seg[] => {
   const filled = Math.max(0, Math.min(width, Math.round(fraction * width)))
-  return [...sweep('▰', filled, 0, filled / Math.max(1, width)), { t: '▱'.repeat(width - filled), c: TRACK }]
-}
-
-// ── The neon tube: a 2-row Raster meter ─────────────────────────────────────
-// Each cell is two stacked half-block pixels, so the bar is 4 pixels tall:
-//
-//   k=0  halo   ▓▓▓ ▓▓▓ ▓▓▓        each pixel row shifts one cell left of the
-//   k=1  core  ███ ███ ███ ▱▱▱     one above, so segments slant like ▰ and
-//   k=2  core ███ ███ ███ ▱▱▱      the gaps between them stay open; lit
-//   k=3  halo ▓▓▓ ▓▓▓ ▓▓▓          segments glow above and below, unlit ones don't
-//
-// Lit gaps take a faint tint of the neon, as light bleeding out of the tube.
-
-const DEFAULT_COLOR = 0x01000000
-const HALO_BASE = '#141414'
-const SEGMENT = 3
-const PERIOD = 4
-const SHIFTS = [2, 1, 0, -1]
-
-const rgb = (c: string) => parseInt(c.slice(1), 16)
-
-export const neonBar = (fraction: number, width: number): number[][] => {
-  const filled = Math.max(0, Math.min(width, Math.round(fraction * width)))
-  // pixels[k][x]: a colour, or DEFAULT_COLOR for the terminal's background.
-  return SHIFTS.map((shift, k) => {
-    const isCore = k === 1 || k === 2
-    return Array.from({ length: width }, (_, x) => {
-      const u = x - shift
-      const isSegment = ((u % PERIOD) + PERIOD) % PERIOD < SEGMENT && u >= 0 && u < width
-      const isLit = u < filled && u >= 0
-      const color = neon(x / Math.max(1, width - 1))
-      if (isSegment && isLit) return rgb(isCore ? color : mix(color, HALO_BASE, 0.6))
-      if (isSegment && isCore) return rgb(TRACK)
-      if (isLit && isCore) return rgb(mix(color, HALO_BASE, 0.85))
-      return DEFAULT_COLOR
-    })
-  })
-}
-
-// Packs the pixels as RasterProps cells: per cell [codePoint, fg, bg].
-export const neonCells = (fraction: number, width: number): string => {
-  const px = neonBar(fraction, width)
-  const words = new Uint32Array(width * 2 * 3)
-  for (let row = 0; row < 2; row++) {
-    for (let x = 0; x < width; x++) {
-      const top = px[row * 2]?.[x] ?? DEFAULT_COLOR
-      const bottom = px[row * 2 + 1]?.[x] ?? DEFAULT_COLOR
-      const i = (row * width + x) * 3
-      if (top === DEFAULT_COLOR && bottom === DEFAULT_COLOR) words.set([0x20, DEFAULT_COLOR, DEFAULT_COLOR], i)
-      else if (top === DEFAULT_COLOR) words.set([0x2584, bottom, DEFAULT_COLOR], i) // ▄
-      else words.set([0x2580, top, bottom], i) // ▀
-    }
-  }
-  // toBase64 is in the runtime (see RasterProps), not yet in TypeScript's lib.
-  return (new Uint8Array(words.buffer) as Uint8Array & { toBase64(): string }).toBase64()
+  return [...sweep('█', filled, 0, filled / Math.max(1, width)), { t: '█'.repeat(width - filled), c: TRACK }]
 }
 
 const delta = (snap: TokenSnapshot): Seg[] =>
@@ -197,18 +143,11 @@ const delta = (snap: TokenSnapshot): Seg[] =>
 
 // ── The band: a framed HUD ──────────────────────────────────────────────────
 //   ╭─◢ CONTEXT//TOKENS ◣──────────────────────────── claude-opus-5-5 ─╮
-//   │ ▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱  52.0K / 200K  26%  ▲3.1K                │  (the
-//   │                                                                │  terminal
-//   │                                                                │  draws the
-//                                                                       meter as a 2-row neon tube)
+//   │ █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  52.0K / 200K  26%  ▲3.1K │
 //   │ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ SKILLS 1.1K ╱ MSG 32.3K ╱ FREE 115K │
 //   ╰─────────────────────────────────────────────────────── ▁▂▃▄▅▆ ─╯
 
-export type BandParts = { top: Seg[]; figures: Seg[]; meterWidth: number; inner: number; readout: Seg[]; bottom: Seg[] }
-
-export const side = (segs: Seg[], inner: number): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
-
-export const bandParts = (snap: TokenSnapshot, width: number, effort: string | null = null): BandParts => {
+export const bandLines = (snap: TokenSnapshot, width: number, effort: string | null = null): Seg[][] => {
   const available = Math.max(30, width)
   const level = levelColor(snap.percent)
 
@@ -234,6 +173,7 @@ export const bandParts = (snap: TokenSnapshot, width: number, effort: string | n
     ...(snap.percent >= 85 ? [{ t: '  ⚠ COMPACT SOON', c: PINK, b: true }] : []),
   ]
   const meterWidth = Math.max(8, Math.min(METER_WIDTH, available - 4 - widthOf(figures)))
+  const rowOne = [...meter(snap.percent / 100, meterWidth), ...figures]
 
   // Row two: each category's readout.
   const shown = snap.categories.filter(c => (c.kind === 'used' || c.kind === 'free') && c.tokens > 0)
@@ -251,14 +191,9 @@ export const bandParts = (snap: TokenSnapshot, width: number, effort: string | n
 
   const top = [...title, ...sweep('─', Math.max(0, W - widthOf(title) - widthOf(model) - 2), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
   const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3, 0, 0.9), { t: '─╯', c: PINK }]
-  return { top, figures, meterWidth, inner, readout: rowTwo, bottom }
-}
+  const side = (segs: Seg[]): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
 
-// The band as text lines, the meter drawn with glyphs.
-export const bandLines = (snap: TokenSnapshot, width: number, effort: string | null = null): Seg[][] => {
-  const p = bandParts(snap, width, effort)
-  const rowOne = [...meter(snap.percent / 100, p.meterWidth), ...p.figures]
-  return [p.top, side(rowOne, p.inner), side(p.readout, p.inner), p.bottom]
+  return [top, side(rowOne), side(rowTwo), bottom]
 }
 
 // ── Readings ────────────────────────────────────────────────────────────────
@@ -410,43 +345,18 @@ export const register: Register = on => {
     const snap = await read($, snapshot)
     if (!snap) return next(e)
 
-    const effort = await read($, effortLevel)
-    const line = (segs: Seg[]) => segs.map(s => (
-      <Text color={s.c} bold={s.b}>
-        {s.t}
-      </Text>
-    ))
-
-    if (e.surface !== 'terminal') {
-      const { Box, Text } = $.ui.resolve(e)
-      return (
-        <Box flexDirection="column">
-          {bandLines(snap, e.props.bodyColumns, effort).map(segs => (
-            <Text wrap="truncate">{line(segs)}</Text>
-          ))}
-        </Box>
-      )
-    }
-
-    const { Box, Text, Raster } = $.ui.resolve(e)
-    const p = bandParts(snap, e.props.bodyColumns, effort)
-    const rest = p.inner - p.meterWidth
+    const { Box, Text } = $.ui.resolve(e)
     return (
       <Box flexDirection="column">
-        <Text wrap="truncate">{line(p.top)}</Text>
-        <Box flexDirection="row">
-          <Box flexDirection="column">
-            <Text color={CYAN}>│ </Text>
-            <Text color={CYAN}>│ </Text>
-          </Box>
-          <Raster key="meter" columns={p.meterWidth} rows={2} cells={neonCells(snap.percent / 100, p.meterWidth)} />
-          <Box flexDirection="column">
-            <Text wrap="truncate">{line([...fit(p.figures, rest), { t: ' │', c: PINK }])}</Text>
-            <Text wrap="truncate">{line([{ t: ' '.repeat(rest) }, { t: ' │', c: PINK }])}</Text>
-          </Box>
-        </Box>
-        <Text wrap="truncate">{line(side(p.readout, p.inner))}</Text>
-        <Text wrap="truncate">{line(p.bottom)}</Text>
+        {bandLines(snap, e.props.bodyColumns, await read($, effortLevel)).map(line => (
+          <Text wrap="truncate">
+            {line.map(s => (
+              <Text color={s.c} bold={s.b}>
+                {s.t}
+              </Text>
+            ))}
+          </Text>
+        ))}
       </Box>
     )
   })

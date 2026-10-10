@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { bandLines, bandParts, neonBar, prettyModel, widthOf } from '../hooks/register'
+import { bandLines, prettyModel, widthOf } from '../hooks/register'
 import type { On, RenderElement, SessionUsage } from 'claude-code'
 
 const USAGE: SessionUsage = {
@@ -112,7 +112,7 @@ test('the frame spans the band; the meter stays short; model and effort sit top 
     for (const line of lines) expect(widthOf(line)).toBe(width)
   }
   const wide = bandLines(snap, 200, 'high').map(l => l.map(s => s.t).join(''))
-  expect((wide[1]?.match(/[▰▱]/g) ?? []).length).toBe(30)
+  expect((wide[1]?.match(/█/g) ?? []).length).toBe(30)
   expect(wide[0]).toMatch(/─ Opus 5\.5 ◆ HIGH ─╮$/)
   expect(wide[3]).toMatch(/^╰─+╯$/)
   for (const line of bandLines({ ...snap, percent: 91 }, 120)) expect(widthOf(line)).toBe(120)
@@ -124,38 +124,4 @@ test('model ids read as names', () => {
   expect(prettyModel('claude-opus-5-5[1m]')).toBe('Opus 5.5 1M')
   expect(prettyModel('Claude Opus 5.5')).toBe('Opus 5.5')
   expect(prettyModel('Opus 5.5')).toBe('Opus 5.5')
-})
-
-test('the neon tube: slanted lit segments glow, unlit ones stay thin, the gaps stay open', () => {
-  const DEFAULT = 0x01000000
-  const width = 30
-  const empty = neonBar(0, width)
-  expect(empty.length).toBe(4)
-  for (const row of empty) expect(row.length).toBe(width)
-  // Nothing lit: the halo rows are background only; the core rows hold the track.
-  expect(empty[0]?.every(c => c === DEFAULT)).toBe(true)
-  expect(empty[3]?.every(c => c === DEFAULT)).toBe(true)
-  expect(empty[1]?.some(c => c !== DEFAULT)).toBe(true)
-
-  const full = neonBar(1, width)
-  // Lit: halos appear, and every core row keeps gaps between segments.
-  expect(full[0]?.some(c => c !== DEFAULT)).toBe(true)
-  const track = 0x3b1f5c
-  expect(full[1]?.includes(track)).toBe(false)
-  // Each pixel row sits one cell right of the row beneath it: the slant.
-  const firstSegment = (row: number[]) => row.findIndex(c => c !== DEFAULT)
-  expect(firstSegment(neonBar(0, width)[1] ?? [])).toBe(firstSegment(neonBar(0, width)[2] ?? []) + 1)
-})
-
-test('the band leaves room for the 2-row meter and the figures beside it', () => {
-  const snap = {
-    total: 52_000, window: 200_000, percent: 26, model: 'claude-opus-5-5', memoryFiles: [], mcpServers: [], skills: [],
-    delta: 3_100, history: [], turnBase: 48_900, at: 0,
-    categories: USAGE.context.breakdown!.categories.map(c => ({ name: c.name, tokens: c.tokens, color: c.color, kind: c.kind })),
-  }
-  const p = bandParts(snap, 160, 'high')
-  expect(p.meterWidth).toBe(30)
-  expect(widthOf(p.top)).toBe(160)
-  expect(widthOf(p.bottom)).toBe(160)
-  expect(p.inner).toBe(156)
 })
