@@ -101,3 +101,7 @@ claude plugin test ./token-breakdown     # run tests/*.test.ts
 ```
 
 New mods go in their own folder, with an entry added to `.claude-plugin/marketplace.json`.
+
+## License
+
+[MIT](LICENSE): free to use, modify and share.
