@@ -136,6 +136,101 @@ export const meter = (fraction: number, width: number): Seg[] => {
   return [...sweep('█', filled, 0, filled / Math.max(1, width)), { t: '█'.repeat(width - filled), c: TRACK }]
 }
 
+// ── The neon image meter (terminals with the kitty graphics protocol) ───────
+// Real pixels, one cell row tall: slanted segments with open gaps, a white-hot
+// core fading to the gradient at the edges, a soft bloom around the lit ones,
+// unlit ones dark. Anti-aliased by signed distance; the background stays
+// transparent so the terminal's own shows through.
+
+const PX_PER_COLUMN = 16
+const PX_HEIGHT = 32
+
+type Rgb = [number, number, number]
+const rgbOf = (c: string): Rgb => [0, 1, 2].map(i => parseInt(c.slice(1 + i * 2, 3 + i * 2), 16)) as Rgb
+
+export const neonImage = (fraction: number, columns: number) => {
+  const W = columns * PX_PER_COLUMN
+  const H = PX_HEIGHT
+  const y0 = 9 // core top
+  const y1 = 23 // core bottom
+  const slant = 6 // the top edge sits this far right of the bottom
+  const segW = 11
+  const x0 = 7 // room for the bloom to fade before the image's edge
+  const count = columns
+  const pitch = (W - 2 * x0 - segW - slant) / Math.max(1, count - 1)
+  const lit = Math.max(0, Math.min(count, Math.round(fraction * count)))
+  const track = rgbOf(TRACK)
+  const white: Rgb = [255, 255, 255]
+
+  // Signed distance from a pixel to segment i, in the sheared frame where
+  // segments are upright rectangles: negative inside.
+  const dist = (xs: number, y: number, i: number) => {
+    const left = x0 + i * pitch
+    const dx = Math.max(left - xs, xs - (left + segW))
+    const dy = Math.max(y0 - y, y - y1)
+    return dx > 0 || dy > 0 ? Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) : Math.max(dx, dy)
+  }
+
+  const pixels = new Uint8Array(W * H * 4)
+  for (let y = 0; y < H; y++) {
+    const yc = y + 0.5
+    const shear = (slant * (y1 - yc)) / (y1 - y0)
+    for (let x = 0; x < W; x++) {
+      const xs = x + 0.5 - shear
+      const near = Math.round((xs - x0 - segW / 2) / pitch)
+      let best = Infinity
+      let index = 0
+      for (let i = near - 1; i <= near + 1; i++) {
+        if (i < 0 || i >= count) continue
+        const d = dist(xs, yc, i)
+        if (d < best) [best, index] = [d, i]
+      }
+      const cover = Math.max(0, Math.min(1, 0.5 - best))
+      const hue = rgbOf(neon(x / Math.max(1, W - 1)))
+
+      // Bloom from the nearest lit segment.
+      let glow = 0
+      if (lit > 0) {
+        const nearestLit = Math.max(0, Math.min(lit - 1, near))
+        let dl = Infinity
+        for (let i = nearestLit - 1; i <= nearestLit + 1; i++) if (i >= 0 && i < lit) dl = Math.min(dl, dist(xs, yc, i))
+        if (dl > 0) glow = Math.min(0.7, 0.42 * Math.exp(-((dl / 2.6) ** 2)) + 0.16 * Math.exp(-((dl / 6) ** 2)))
+      }
+
+      let core: Rgb = track
+      if (index < lit) {
+        const edge = Math.min(1, Math.abs(yc - (y0 + y1) / 2) / ((y1 - y0) / 2))
+        const heat = 0.45 + 0.55 * edge
+        core = [0, 1, 2].map(k => white[k]! + (hue[k]! - white[k]!) * heat) as Rgb
+      }
+      const alpha = cover + glow * (1 - cover)
+      const o = (y * W + x) * 4
+      if (alpha <= 0) continue
+      for (let k = 0; k < 3; k++) pixels[o + k] = Math.round((core[k]! * cover + hue[k]! * glow * (1 - cover)) / alpha)
+      pixels[o + 3] = Math.round(alpha * 255)
+    }
+  }
+  // toBase64 is in the runtime (see ImageSource), not yet in TypeScript's lib.
+  return { rgba: (pixels as Uint8Array & { toBase64(): string }).toBase64(), width: W, height: H }
+}
+
+// Redrawn only when the bar changes.
+let imageCache: { key: string; source: ReturnType<typeof neonImage> } | null = null
+const cachedNeonImage = (fraction: number, columns: number) => {
+  const key = `${Math.round(fraction * columns)}:${columns}`
+  if (imageCache?.key !== key) imageCache = { key, source: neonImage(fraction, columns) }
+  return imageCache.source
+}
+
+// Terminals that draw real pixels (the kitty graphics protocol). tmux passes
+// none through, so a session inside it keeps the glyph meter.
+async function canDrawImages($: EngineInterface) {
+  const program = ((await $.env.get('TERM_PROGRAM')) ?? '').toLowerCase()
+  const term = ((await $.env.get('TERM')) ?? '').toLowerCase()
+  if (await $.env.get('TMUX')) return false
+  return program === 'ghostty' || program === 'kitty' || term.includes('kitty') || term.includes('ghostty')
+}
+
 const delta = (snap: TokenSnapshot): Seg[] =>
   snap.delta === 0
     ? []
@@ -147,7 +242,11 @@ const delta = (snap: TokenSnapshot): Seg[] =>
 //   │ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ SKILLS 1.1K ╱ MSG 32.3K ╱ FREE 115K │
 //   ╰─────────────────────────────────────────────────────── ▁▂▃▄▅▆ ─╯
 
-export const bandLines = (snap: TokenSnapshot, width: number, effort: string | null = null): Seg[][] => {
+export type BandParts = { top: Seg[]; figures: Seg[]; meterWidth: number; inner: number; readout: Seg[]; bottom: Seg[] }
+
+export const side = (segs: Seg[], inner: number): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
+
+export const bandParts = (snap: TokenSnapshot, width: number, effort: string | null = null): BandParts => {
   const available = Math.max(30, width)
   const level = levelColor(snap.percent)
 
@@ -173,7 +272,6 @@ export const bandLines = (snap: TokenSnapshot, width: number, effort: string | n
     ...(snap.percent >= 85 ? [{ t: '  ⚠ COMPACT SOON', c: PINK, b: true }] : []),
   ]
   const meterWidth = Math.max(8, Math.min(METER_WIDTH, available - 4 - widthOf(figures)))
-  const rowOne = [...meter(snap.percent / 100, meterWidth), ...figures]
 
   // Row two: each category's readout.
   const shown = snap.categories.filter(c => (c.kind === 'used' || c.kind === 'free') && c.tokens > 0)
@@ -191,9 +289,14 @@ export const bandLines = (snap: TokenSnapshot, width: number, effort: string | n
 
   const top = [...title, ...sweep('─', Math.max(0, W - widthOf(title) - widthOf(model) - 2), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
   const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3, 0, 0.9), { t: '─╯', c: PINK }]
-  const side = (segs: Seg[]): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
+  return { top, figures, meterWidth, inner, readout: rowTwo, bottom }
+}
 
-  return [top, side(rowOne), side(rowTwo), bottom]
+// The band as text lines, the meter drawn with glyphs.
+export const bandLines = (snap: TokenSnapshot, width: number, effort: string | null = null): Seg[][] => {
+  const p = bandParts(snap, width, effort)
+  const rowOne = [...meter(snap.percent / 100, p.meterWidth), ...p.figures]
+  return [p.top, side(rowOne, p.inner), side(p.readout, p.inner), p.bottom]
 }
 
 // ── Readings ────────────────────────────────────────────────────────────────
@@ -345,17 +448,42 @@ export const register: Register = on => {
     const snap = await read($, snapshot)
     if (!snap) return next(e)
 
+    const effort = await read($, effortLevel)
     const { Box, Text } = $.ui.resolve(e)
+    const line = (segs: Seg[]) =>
+      segs.map(s => (
+        <Text color={s.c} bold={s.b}>
+          {s.t}
+        </Text>
+      ))
+
+    if (e.surface === 'terminal' && (await canDrawImages($))) {
+      const { Image } = $.ui.resolve(e)
+      const p = bandParts(snap, e.props.bodyColumns, effort)
+      return (
+        <Box flexDirection="column">
+          <Text wrap="truncate">{line(p.top)}</Text>
+          <Box flexDirection="row">
+            <Text color={CYAN}>│ </Text>
+            <Image
+              key="meter"
+              columns={p.meterWidth}
+              rows={1}
+              source={cachedNeonImage(snap.percent / 100, p.meterWidth)}
+              alt={'▰'.repeat(Math.round((snap.percent / 100) * p.meterWidth)).padEnd(p.meterWidth, '▱')}
+            />
+            <Text wrap="truncate">{line([...fit(p.figures, p.inner - p.meterWidth), { t: ' │', c: PINK }])}</Text>
+          </Box>
+          <Text wrap="truncate">{line(side(p.readout, p.inner))}</Text>
+          <Text wrap="truncate">{line(p.bottom)}</Text>
+        </Box>
+      )
+    }
+
     return (
       <Box flexDirection="column">
-        {bandLines(snap, e.props.bodyColumns, await read($, effortLevel)).map(line => (
-          <Text wrap="truncate">
-            {line.map(s => (
-              <Text color={s.c} bold={s.b}>
-                {s.t}
-              </Text>
-            ))}
-          </Text>
+        {bandLines(snap, e.props.bodyColumns, effort).map(segs => (
+          <Text wrap="truncate">{line(segs)}</Text>
         ))}
       </Box>
     )

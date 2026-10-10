@@ -50,7 +50,10 @@ This shows what `/context` shows, without having to run it. It's a framed neon H
 ```
 
 - **The frame** glows from neon cyan on the left to hot pink on the right, so the HUD stands apart from the chat. It spans the full width, with the model (`Opus 5.5`) and the reasoning effort it runs at (`◆ HIGH`) in the top-right corner.
-- **The meter** is a fixed 30 cells. It fills along a cyan → purple → pink gradient, so a nearly full window reads hot. The percentage turns yellow at 60% and pink at 85%, where a `⚠ COMPACT SOON` flag also appears. `▲` shows the tokens added this turn.
+- **The meter** is 30 cells long. In terminals that can draw real images (**Ghostty**, **kitty**), it's a pixel-drawn neon bar: slanted segments with open gaps, a white-hot core fading to a cyan → purple → pink gradient, and a soft glow around the lit segments. Unlit segments stay dark. Everywhere else, including inside tmux, it falls back to a one-row character bar in the same gradient.
+
+  ![neon meter at 18%, 55% and 92%](docs/neon-meter.png)
+
 - **The readout** gives each category's size: system prompt, tools, MCP, memory, skills, messages and free space.
 
 Commands:

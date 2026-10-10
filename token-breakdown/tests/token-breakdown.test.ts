@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { bandLines, prettyModel, widthOf } from '../hooks/register'
+import { bandLines, neonImage, prettyModel, widthOf } from '../hooks/register'
 import type { On, RenderElement, SessionUsage } from 'claude-code'
 
 const USAGE: SessionUsage = {
@@ -41,8 +41,9 @@ const USAGE: SessionUsage = {
 
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } } as const
 
-const engine = (on: On) => {
+const engine = (on: On, env: Record<string, string> = {}) => {
   mock.clock(on, { now: 1_000 })
+  mock.env(on, env)
   on('session.start', () => ({ cwd: '/tmp' }))
   on('session.usage', () => ({ value: USAGE }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -124,4 +125,37 @@ test('model ids read as names', () => {
   expect(prettyModel('claude-opus-5-5[1m]')).toBe('Opus 5.5 1M')
   expect(prettyModel('Claude Opus 5.5')).toBe('Opus 5.5')
   expect(prettyModel('Opus 5.5')).toBe('Opus 5.5')
+})
+
+test('in Ghostty the meter is a real image; elsewhere it stays glyphs', async ($, on) => {
+  engine(on, { TERM_PROGRAM: 'ghostty' })
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'tokens', args: '', ...RUN })
+  const band = await $.ui.mount({ plugin: 'token-breakdown', surface: 'terminal', ...BAND })
+  expect(await band.find({ type: 'Image' })).toBeDefined()
+  expect(await band.find({ type: 'Text', text: /52\.0K \/ 200K  26%/ })).toBeDefined()
+  await band.unmount()
+})
+
+test('inside tmux the glyph meter stays, even in Ghostty', async ($, on) => {
+  engine(on, { TERM_PROGRAM: 'ghostty', TMUX: '/tmp/tmux-501/default,1,0' })
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'tokens', args: '', ...RUN })
+  const band = await $.ui.mount({ plugin: 'token-breakdown', surface: 'terminal', ...BAND })
+  expect(await band.find({ type: 'Image' })).toBeUndefined()
+  await band.unmount()
+})
+
+test('the image: lit segments glow, unlit ones do not, gaps stay open', () => {
+  const img = neonImage(0.5, 30)
+  expect(img.width).toBe(480)
+  expect(img.height).toBe(32)
+  const px = (Uint8Array as unknown as { fromBase64(s: string): Uint8Array }).fromBase64(img.rgba)
+  expect(px.length).toBe(480 * 32 * 4)
+  const alpha = (x: number, y: number) => px[(y * 480 + x) * 4 + 3] ?? 0
+  // Above the core: bloom over the lit half, nothing over the unlit half.
+  expect(Math.max(...Array.from({ length: 200 }, (_, x) => alpha(x, 5)))).toBeGreaterThan(0)
+  expect(Math.max(...Array.from({ length: 150 }, (_, x) => alpha(320 + x, 5)))).toBe(0)
+  // Along the unlit core row, some pixels are fully open: the gaps.
+  expect(Array.from({ length: 150 }, (_, x) => alpha(320 + x, 16)).some(a => a === 0)).toBe(true)
 })
