@@ -214,3 +214,16 @@ test('the HUD and the pane also draw on the desktop surface', async ($, on) => {
   expect(await band.find({ type: 'Text', text: /52\.0K \/ 200K  26%/ })).toBeDefined()
   await band.unmount()
 })
+
+test('a band hidden in an earlier session stays hidden; /tokens show brings it back', async ($, on) => {
+  engine(on, { hidden: true })
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'tokens', args: 'theme', ...RUN })
+  const hidden = await $.ui.mount({ plugin: 'token-breakdown', surface: 'terminal', ...BAND })
+  expect(await hidden.find({ type: 'Text', text: 'engine' })).toBeDefined()
+  await hidden.unmount()
+  await $.command.run({ command: 'tokens', args: 'show', ...RUN })
+  const shown = await $.ui.mount({ plugin: 'token-breakdown', surface: 'terminal', ...BAND })
+  expect(await shown.find({ type: 'Text', text: /CONTEXT\/\/TOKENS/ })).toBeDefined()
+  await shown.unmount()
+})

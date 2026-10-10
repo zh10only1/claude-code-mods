@@ -7,7 +7,10 @@ Personal mods for [Claude Code](https://claude.dev/blog/getting-started-with-cla
 | [`token-breakdown`](#token-breakdown) | A neon HUD above the prompt that shows your context window's token usage at all times, split into categories, with anime-named colour themes |
 | [`daft-tokens`](#daft-tokens) | The same token readout in high-contrast black and white, with a pixel-art silver Daft Punk helmet |
 
-> Both mods draw in the same spot above the prompt, so only one shows at a time. Install the one you like, or install both and hide one: `/tokens hide` or `/daft hide`.
+> Both mods draw in the same spot above the prompt, so only one shows at a time. Install the one you like, or install both and switch between them. Hiding is remembered across sessions, so you only switch once:
+>
+> - **Daft Punk:** `/tokens hide`, then `/daft show`
+> - **Neon:** `/daft hide`, then `/tokens show`
 
 ## Quick install
 
@@ -69,7 +72,7 @@ After installing, the HUD appears above the prompt **once Claude has answered yo
 | Command | Effect |
 | --- | --- |
 | `/tokens` | Opens a detail pane: a bar for each category with its share of the window, plus the largest memory files, MCP servers and skills |
-| `/tokens hide` | Hides the HUD above the prompt |
+| `/tokens hide` | Hides the HUD above the prompt, in this and later sessions |
 | `/tokens show` | Brings it back |
 | `/tokens theme` | Lists the themes, marking the one in use |
 | `/tokens theme <name>` | Switches theme and remembers it across sessions, e.g. `/tokens theme bebop` |
@@ -117,7 +120,7 @@ The same live token readout as token-breakdown, restyled in high contrast: a pur
 
 | Command | Effect |
 | --- | --- |
-| `/daft hide` | Hides the HUD |
+| `/daft hide` | Hides the HUD, in this and later sessions |
 | `/daft show` | Brings it back |
 
 Like token-breakdown, it appears after Claude's first reply, refreshes after every turn, makes no extra API calls, and is best on a dark terminal.

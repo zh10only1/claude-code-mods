@@ -1,6 +1,6 @@
 {
   "name": "token-breakdown",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "description": "Neon HUD above the prompt with your context window's token usage by category, plus anime colour themes and a /tokens detail pane",
   "author": {
     "name": "zh10only1"

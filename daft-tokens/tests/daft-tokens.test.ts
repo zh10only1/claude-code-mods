@@ -37,8 +37,9 @@ const USAGE: SessionUsage = {
 
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } } as const
 
-const engine = (on: On, effortSource: 'env' | 'settings' | 'config' = 'config') => {
+const engine = (on: On, effortSource: 'env' | 'settings' | 'config' = 'config', store: Record<string, unknown> = {}) => {
   mock.clock(on, { now: 1_000 })
+  mock.store(on, store)
   mock.env(on, effortSource === 'env' ? { CLAUDE_EFFORT: 'medium' } : {})
   on('settings.read', () => ({ value: effortSource === 'settings' ? { effortLevel: 'xhigh' } : {} }))
   on('session.start', () => ({ cwd: '/tmp' }))
@@ -113,3 +114,15 @@ for (const [source, level] of [['env', 'MEDIUM'], ['settings', 'XHIGH'], ['confi
     await band.unmount()
   })
 }
+
+test('a HUD hidden in an earlier session stays hidden; /daft show brings it back', async ($, on) => {
+  engine(on, 'config', { hidden: true })
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  const hidden = await $.ui.mount({ plugin: 'daft-tokens', surface: 'terminal', ...BAND })
+  expect(await hidden.find({ type: 'Text', text: 'engine' })).toBeDefined()
+  await hidden.unmount()
+  await $.command.run({ command: 'daft', args: 'show', ...RUN })
+  const shown = await $.ui.mount({ plugin: 'daft-tokens', surface: 'terminal', ...BAND })
+  expect(await shown.find({ type: 'Text', text: 'RANDOM ACCESS MEMORIES' })).toBeDefined()
+  await shown.unmount()
+})

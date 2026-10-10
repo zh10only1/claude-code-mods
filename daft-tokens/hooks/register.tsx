@@ -259,11 +259,24 @@ async function readEffortSetting($: EngineInterface) {
   }
 }
 
+// Whether the HUD is hidden is kept across sessions in the mod's store.
+async function loadHidden($: EngineInterface) {
+  try {
+    const hidden = await $.store.get('hidden')
+    if (typeof hidden === 'boolean' && (await read($, isHidden)) !== hidden) {
+      await update($, isHidden, () => hidden)
+    }
+  } catch {
+    // No store: the HUD shows.
+  }
+}
+
 // ── Hooks ───────────────────────────────────────────────────────────────────
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
+    await loadHidden($)
     void readEffortSetting($)
     await $.command.register({ name: 'daft', description: 'Daft Punk token HUD: hide or show it' })
     void refresh($, true)
@@ -312,9 +325,11 @@ export const register: Register = on => {
     const arg = e.args.trim().toLowerCase()
     if (arg === 'hide') {
       await update($, isHidden, () => true)
-      return { text: 'Daft Punk HUD hidden. /daft show brings it back.' }
+      await $.store.set('hidden', true)
+      return { text: 'Daft Punk HUD hidden, in this and later sessions. /daft show brings it back.' }
     }
     await update($, isHidden, () => false)
+    await $.store.set('hidden', false)
     await refresh($)
     return { text: 'Daft Punk HUD shown. /daft hide hides it.' }
   })

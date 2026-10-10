@@ -1,6 +1,6 @@
 {
   "name": "daft-tokens",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Monochrome context-token HUD above the prompt, with a pixel-art silver Daft Punk helmet",
   "author": { "name": "zh10only1" },
   "license": "MIT",

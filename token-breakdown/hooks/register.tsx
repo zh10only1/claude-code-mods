@@ -330,15 +330,20 @@ async function readEffortSetting($: EngineInterface) {
   }
 }
 
-// The chosen theme is kept across sessions in the mod's store.
+// The chosen theme and whether the band is hidden are kept across sessions
+// in the mod's store.
 async function loadTheme($: EngineInterface) {
   try {
     const saved = await $.store.get('theme')
     if (typeof saved === 'string' && THEMES[saved] && (await read($, themeId)) !== saved) {
       await update($, themeId, () => saved)
     }
+    const hidden = await $.store.get('hidden')
+    if (typeof hidden === 'boolean' && (await read($, isBandHidden)) !== hidden) {
+      await update($, isBandHidden, () => hidden)
+    }
   } catch {
-    // No store: the default theme stands.
+    // No store: the default theme stands and the band shows.
   }
 }
 
@@ -458,10 +463,12 @@ export const register: Register = on => {
     }
     if (arg === 'hide') {
       await update($, isBandHidden, () => true)
-      return { text: 'Token band hidden. /tokens show brings it back.' }
+      await $.store.set('hidden', true)
+      return { text: 'Token band hidden, in this and later sessions. /tokens show brings it back.' }
     }
     if (arg === 'show') {
       await update($, isBandHidden, () => false)
+      await $.store.set('hidden', false)
       await refresh($)
       return { text: 'Token band shown.' }
     }
