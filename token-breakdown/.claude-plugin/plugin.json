@@ -1,6 +1,6 @@
 {
   "name": "token-breakdown",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Always-on context token breakdown above the prompt (total + per category, like /context), with a /tokens detail pane",
   "author": { "name": "zh10only1" },
   "types": "./types/index.d.ts"

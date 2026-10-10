@@ -14,6 +14,12 @@ export type TokenSnapshot = {
   memoryFiles: { path: string; type: string; tokens: number }[]
   mcpServers: { name: string; tokens: number; tools: number }[]
   skills: { name: string; tokens: number }[]
+  /** Tokens added since the last completed turn. */
+  delta: number
+  /** Context fill (percent) at the end of each recent turn, oldest first. */
+  history: number[]
+  /** Total at the end of the last completed turn. */
+  turnBase: number
   at: number
 }
 
