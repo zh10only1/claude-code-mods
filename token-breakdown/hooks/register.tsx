@@ -148,19 +148,34 @@ const PX_HEIGHT = 32
 type Rgb = [number, number, number]
 const rgbOf = (c: string): Rgb => [0, 1, 2].map(i => parseInt(c.slice(1 + i * 2, 3 + i * 2), 16)) as Rgb
 
-export const neonImage = (fraction: number, columns: number) => {
+// The lit tube's own gradient: brighter and more saturated than the text
+// palette, so it reads as light, not paint.
+const TUBE = ['#00f6ff', '#4d7dff', '#a64dff', '#ff2bd6', '#ff2a6d'].map(rgbOf)
+const tube = (t: number): Rgb => {
+  const p = Math.max(0, Math.min(1, t)) * (TUBE.length - 1)
+  const i = Math.min(TUBE.length - 2, Math.floor(p))
+  const [a, z] = [TUBE[i]!, TUBE[i + 1]!]
+  return [0, 1, 2].map(k => a[k]! + (z[k]! - a[k]!) * (p - i)) as Rgb
+}
+
+export const neonImage = (fraction: number, columns: number, rows = 1) => {
   const W = columns * PX_PER_COLUMN
-  const H = PX_HEIGHT
-  const y0 = 9 // core top
-  const y1 = 23 // core bottom
-  const slant = 6 // the top edge sits this far right of the bottom
+  const H = PX_HEIGHT * rows
+  const coreHeight = rows === 1 ? 10 : 9 + 9 * rows
+  const y0 = (H - coreHeight) / 2 // core top
+  const y1 = y0 + coreHeight // core bottom
+  const mid = (y0 + y1) / 2
+  const slant = coreHeight * 0.5 // the top edge sits this far right of the bottom
   const segW = 11
-  const x0 = 7 // room for the bloom to fade before the image's edge
+  const x0 = 8 // room for the bloom to fade before the image's edge
   const count = columns
   const pitch = (W - 2 * x0 - segW - slant) / Math.max(1, count - 1)
   const lit = Math.max(0, Math.min(count, Math.round(fraction * count)))
+  const litEnd = lit > 0 ? x0 + (lit - 1) * pitch + segW + slant / 2 : 0
   const track = rgbOf(TRACK)
   const white: Rgb = [255, 255, 255]
+  const near = 3 * rows // the tight halo around each lit segment
+  const wide = 5 + 4 * rows // the bloom the whole lit tube throws
 
   // Signed distance from a pixel to segment i, in the sheared frame where
   // segments are upright rectangles: negative inside.
@@ -176,38 +191,46 @@ export const neonImage = (fraction: number, columns: number) => {
     const yc = y + 0.5
     const shear = (slant * (y1 - yc)) / (y1 - y0)
     for (let x = 0; x < W; x++) {
-      const xs = x + 0.5 - shear
-      const near = Math.round((xs - x0 - segW / 2) / pitch)
+      const xc = x + 0.5
+      const xs = xc - shear
+      const nearest = Math.round((xs - x0 - segW / 2) / pitch)
       let best = Infinity
       let index = 0
-      for (let i = near - 1; i <= near + 1; i++) {
+      for (let i = nearest - 1; i <= nearest + 1; i++) {
         if (i < 0 || i >= count) continue
         const d = dist(xs, yc, i)
         if (d < best) [best, index] = [d, i]
       }
       const cover = Math.max(0, Math.min(1, 0.5 - best))
-      const hue = rgbOf(neon(x / Math.max(1, W - 1)))
+      const hue = tube(xc / W)
 
-      // Bloom from the nearest lit segment.
+      // Light: a halo summed over the nearby lit segments, plus a soft band of
+      // bloom along the whole lit stretch of the tube.
       let glow = 0
       if (lit > 0) {
-        const nearestLit = Math.max(0, Math.min(lit - 1, near))
-        let dl = Infinity
-        for (let i = nearestLit - 1; i <= nearestLit + 1; i++) if (i >= 0 && i < lit) dl = Math.min(dl, dist(xs, yc, i))
-        if (dl > 0) glow = Math.min(0.7, 0.42 * Math.exp(-((dl / 2.6) ** 2)) + 0.16 * Math.exp(-((dl / 6) ** 2)))
+        for (let i = nearest - 2; i <= nearest + 2; i++) {
+          if (i < 0 || i >= lit) continue
+          const d = Math.max(0, dist(xs, yc, i))
+          glow += 0.55 * Math.exp(-((d / near) ** 2))
+        }
+        const dy = Math.max(0, Math.abs(yc - mid) - coreHeight / 2)
+        const dx = Math.max(0, xc - litEnd, x0 - xc)
+        glow += 0.5 * Math.exp(-((Math.hypot(dx, dy) / wide) ** 2))
+        glow = Math.min(0.92, glow)
       }
 
       let core: Rgb = track
       if (index < lit) {
-        const edge = Math.min(1, Math.abs(yc - (y0 + y1) / 2) / ((y1 - y0) / 2))
-        const heat = 0.45 + 0.55 * edge
-        core = [0, 1, 2].map(k => white[k]! + (hue[k]! - white[k]!) * heat) as Rgb
+        // A thin white-hot line through the middle, pure colour around it.
+        const edge = Math.abs(yc - mid) / (coreHeight / 2)
+        const hot = Math.max(0, 1 - edge / 0.35) * 0.55
+        core = [0, 1, 2].map(k => hue[k]! + (white[k]! - hue[k]!) * hot) as Rgb
       }
       const alpha = cover + glow * (1 - cover)
       const o = (y * W + x) * 4
       if (alpha <= 0) continue
       for (let k = 0; k < 3; k++) pixels[o + k] = Math.round((core[k]! * cover + hue[k]! * glow * (1 - cover)) / alpha)
-      pixels[o + 3] = Math.round(alpha * 255)
+      pixels[o + 3] = Math.round(Math.min(1, alpha) * 255)
     }
   }
   // toBase64 is in the runtime (see ImageSource), not yet in TypeScript's lib.
