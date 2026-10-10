@@ -7,21 +7,118 @@ const PANE = 'token-breakdown'
 const snapshot = atom({ plugin: 'token-breakdown', key: 'snapshot' } as const, null)
 const isBandHidden = atom({ plugin: 'token-breakdown', key: 'isBandHidden' } as const, false)
 const effortLevel = atom({ plugin: 'token-breakdown', key: 'effort' } as const, null)
+const themeId = atom({ plugin: 'token-breakdown', key: 'theme' } as const, 'ghost')
 
 // Refreshes triggered by tool calls are throttled; turn ends always refresh.
 const TOOL_REFRESH_MS = 3000
 const HISTORY_LENGTH = 16
 const METER_WIDTH = 30
 
-// ── Neon palette ────────────────────────────────────────────────────────────
+// ── Themes ──────────────────────────────────────────────────────────────────
+// Each theme is named for an anime and fills the same roles; nothing below
+// names a colour directly.
 
-const CYAN = '#05d9e8'
-const PURPLE = '#7b2cff'
-const MAGENTA = '#d300c5'
-const PINK = '#ff2a6d'
-const YELLOW = '#fcee0c'
-const TRACK = '#3b1f5c'
-const HAZE = '#8a6fb3'
+export type Theme = {
+  id: string
+  name: string
+  /** The gradient's three stops, left to right: meter, frame, sparks. */
+  a: string
+  b: string
+  c: string
+  /** Title middle (`//`), section titles, the rising-delta mark. */
+  accent: string
+  /** The title's last word (`TOKENS`) and the frame's right side. */
+  title2: string
+  /** The percentage from 60%. */
+  warn: string
+  /** The percentage from 85%, and the COMPACT SOON flag. */
+  hot: string
+  /** The meter's unfilled part. */
+  track: string
+  /** Secondary text: the window size, free space, paths. */
+  muted: string
+  /** Category labels. */
+  label: string
+  /** Dividers and tree lines. */
+  sep: string
+  /** How the gradient moves between stops: a smooth blend, or flat bands. */
+  blend: 'smooth' | 'blocks'
+}
+
+export const THEMES: Record<string, Theme> = {
+  ghost: {
+    id: 'ghost',
+    name: 'Ghost in the Shell',
+    a: '#05d9e8',
+    b: '#7b2cff',
+    c: '#ff2a6d',
+    accent: '#d300c5',
+    title2: '#ff2a6d',
+    warn: '#fcee0c',
+    hot: '#ff2a6d',
+    track: '#3b1f5c',
+    muted: '#8a6fb3',
+    label: '#05d9e8',
+    sep: '#7b2cff',
+    blend: 'smooth',
+  },
+  // Edo woodblock print meets hip-hop: Jin's indigo, ochre earth, a vermilion
+  // seal stamp; Fuu's pink, washed parchment, Mugen's red, olive countryside.
+  champloo: {
+    id: 'champloo',
+    name: 'Samurai Champloo',
+    a: '#5a8bc4',
+    b: '#d9a441',
+    c: '#e0603a',
+    accent: '#f07ca0',
+    title2: '#e8d8b0',
+    warn: '#f08a24',
+    hot: '#e63946',
+    track: '#2c3a4f',
+    muted: '#a39a7c',
+    label: '#8f9a5b',
+    sep: '#7d8fb0',
+    blend: 'smooth',
+  },
+  // The opening's flat colour panels: blue, yellow, red-orange in hard bands;
+  // Spike's suit and shirt, teal, cream, amber bar light, cigarette smoke.
+  bebop: {
+    id: 'bebop',
+    name: 'Cowboy Bebop',
+    a: '#3a86d4',
+    b: '#f7c531',
+    c: '#fc3c04',
+    accent: '#2ec4a6',
+    title2: '#f3e3c3',
+    warn: '#f5a623',
+    hot: '#ff1f3d',
+    track: '#45391f',
+    muted: '#8a96a8',
+    label: '#f5a688',
+    sep: '#6f8299',
+    blend: 'blocks',
+  },
+}
+export const DEFAULT_THEME = 'ghost'
+
+const ALIASES: Record<string, string> = {
+  gits: 'ghost',
+  ghostintheshell: 'ghost',
+  ghostandshell: 'ghost',
+  samurai: 'champloo',
+  samuraichamploo: 'champloo',
+  cowboy: 'bebop',
+  cowboybebop: 'bebop',
+}
+
+export const themeOf = (id: string | null | undefined): Theme => THEMES[id ?? ''] ?? (THEMES[DEFAULT_THEME] as Theme)
+
+// Accepts an id, an alias or the full name in any case and spacing.
+export const findTheme = (query: string): Theme | undefined => {
+  const key = query.toLowerCase().replace(/[^a-z0-9]/g, '')
+  const byName = Object.values(THEMES).find(t => t.name.toLowerCase().replace(/[^a-z0-9]/g, '') === key)
+  return THEMES[key] ?? THEMES[ALIASES[key] ?? ''] ?? byName
+}
 
 const LABELS: Record<string, string> = {
   'System prompt': 'SYS',
@@ -50,13 +147,14 @@ const mix = (a: string, z: string, t: number) => {
   return `#${x.map((v, i) => Math.round(v + ((y[i] ?? v) - v) * t).toString(16).padStart(2, '0')).join('')}`
 }
 
-// Synthwave sweep: cyan → purple → pink, t from 0 to 1.
-export const neon = (t: number): string => {
+// The theme's sweep a → b → c, t from 0 to 1.
+export const neon = (th: Theme, t: number): string => {
   const p = Math.max(0, Math.min(1, t))
-  return p < 0.5 ? mix(CYAN, PURPLE, p / 0.5) : mix(PURPLE, PINK, (p - 0.5) / 0.5)
+  if (th.blend === 'blocks') return p < 1 / 3 ? th.a : p < 2 / 3 ? th.b : th.c
+  return p < 0.5 ? mix(th.a, th.b, p / 0.5) : mix(th.b, th.c, (p - 0.5) / 0.5)
 }
 
-const levelColor = (percent: number) => (percent >= 85 ? PINK : percent >= 60 ? YELLOW : CYAN)
+const levelColor = (th: Theme, percent: number) => (percent >= 85 ? th.hot : percent >= 60 ? th.warn : th.a)
 
 const SPARKS = '▁▂▃▄▅▆▇█'
 const spark = (percent: number) => SPARKS[Math.max(0, Math.min(7, Math.round((percent / 100) * 7)))] ?? '▁'
@@ -74,18 +172,14 @@ export const prettyModel = (id: string): string => {
   return [...words, version].filter(Boolean).join(' ') + wide
 }
 
-const EFFORT_COLORS: Record<string, string> = {
-  low: '#05d9e8',
-  medium: '#7b2cff',
-  high: '#d300c5',
-  xhigh: '#ff2a6d',
-  max: '#fcee0c',
-}
+// Effort climbs the theme: low a, medium b, high accent, xhigh c, max warn.
+const effortColor = (th: Theme, effort: string) =>
+  ({ low: th.a, medium: th.b, high: th.accent, xhigh: th.c, max: th.warn })[effort] ?? th.a
 
 // Top-right of the frame: model, then the effort it runs at.
-const modelTag = (model: string, effort: string | null): Seg[] => {
-  const tag: Seg[] = model ? [{ t: ` ${prettyModel(model)} `, c: HAZE }] : effort ? [{ t: ' ' }] : []
-  if (effort) tag.push({ t: '◆ ', c: PURPLE }, { t: `${effort.toUpperCase()} `, c: EFFORT_COLORS[effort] ?? CYAN, b: true })
+const modelTag = (th: Theme, model: string, effort: string | null): Seg[] => {
+  const tag: Seg[] = model ? [{ t: ` ${prettyModel(model)} `, c: th.muted }] : effort ? [{ t: ' ' }] : []
+  if (effort) tag.push({ t: '◆ ', c: th.sep }, { t: `${effort.toUpperCase()} `, c: effortColor(th, effort), b: true })
   return tag
 }
 
@@ -118,12 +212,12 @@ export const fit = (segs: Seg[], width: number): Seg[] => {
 
 // A run of `glyph` whose colour sweeps the neon gradient from t0 to t1,
 // grouped into a few steps so the tree stays small.
-const sweep = (glyph: string, count: number, t0: number, t1: number, steps = 24): Seg[] => {
+const sweep = (th: Theme, glyph: string, count: number, t0: number, t1: number, steps = 24): Seg[] => {
   const out: Seg[] = []
   for (let i = 0; i < count; ) {
     const run = Math.max(1, Math.ceil(count / steps))
     const n = Math.min(run, count - i)
-    out.push({ t: glyph.repeat(n), c: neon(t0 + ((t1 - t0) * (i + n / 2)) / Math.max(1, count)) })
+    out.push({ t: glyph.repeat(n), c: neon(th, t0 + ((t1 - t0) * (i + n / 2)) / Math.max(1, count)) })
     i += n
   }
   return out
@@ -131,15 +225,24 @@ const sweep = (glyph: string, count: number, t0: number, t1: number, steps = 24)
 
 // The meter: filled cells take the gradient by position, so the bar turns
 // from cyan to hot pink as the window fills.
-export const meter = (fraction: number, width: number): Seg[] => {
+export const meter = (th: Theme, fraction: number, width: number): Seg[] => {
   const filled = Math.max(0, Math.min(width, Math.round(fraction * width)))
-  return [...sweep('█', filled, 0, filled / Math.max(1, width)), { t: '█'.repeat(width - filled), c: TRACK }]
+  return [...sweep(th, '█', filled, 0, filled / Math.max(1, width)), { t: '█'.repeat(width - filled), c: th.track }]
 }
 
-const delta = (snap: TokenSnapshot): Seg[] =>
+const delta = (th: Theme, snap: TokenSnapshot): Seg[] =>
   snap.delta === 0
     ? []
-    : [{ t: `  ${snap.delta > 0 ? '▲' : '▼'}${formatTokens(Math.abs(snap.delta))}`, c: snap.delta > 0 ? MAGENTA : CYAN }]
+    : [{ t: `  ${snap.delta > 0 ? '▲' : '▼'}${formatTokens(Math.abs(snap.delta))}`, c: snap.delta > 0 ? th.accent : th.a }]
+
+// The title, as the band's top edge and the pane's header both draw it.
+const titleSegs = (th: Theme): Seg[] => [
+  { t: '◢ ', c: th.title2 },
+  { t: 'CONTEXT', c: th.a, b: true },
+  { t: '//', c: th.accent, b: true },
+  { t: 'TOKENS', c: th.title2, b: true },
+  { t: ' ◣', c: th.title2 },
+]
 
 // ── The band: a framed HUD ──────────────────────────────────────────────────
 //   ╭─◢ CONTEXT//TOKENS ◣──────────────────────────── claude-opus-5-5 ─╮
@@ -147,51 +250,49 @@ const delta = (snap: TokenSnapshot): Seg[] =>
 //   │ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ SKILLS 1.1K ╱ MSG 32.3K ╱ FREE 115K │
 //   ╰─────────────────────────────────────────────────────── ▁▂▃▄▅▆ ─╯
 
-export const bandLines = (snap: TokenSnapshot, width: number, effort: string | null = null): Seg[][] => {
+export const bandLines = (
+  snap: TokenSnapshot,
+  width: number,
+  effort: string | null = null,
+  th: Theme = themeOf(DEFAULT_THEME),
+): Seg[][] => {
   const available = Math.max(30, width)
-  const level = levelColor(snap.percent)
+  const level = levelColor(th, snap.percent)
 
   // Title and model, for the top edge.
-  const title: Seg[] = [
-    { t: '╭─', c: CYAN },
-    { t: '◢ ', c: PINK },
-    { t: 'CONTEXT', c: CYAN, b: true },
-    { t: '//', c: MAGENTA, b: true },
-    { t: 'TOKENS', c: PINK, b: true },
-    { t: ' ◣', c: PINK },
-  ]
-  const fullTag = modelTag(snap.model, effort)
+  const title: Seg[] = [{ t: '╭─', c: th.a }, ...titleSegs(th)]
+  const fullTag = modelTag(th, snap.model, effort)
 
   // Row one: a fixed-length meter and the figures.
   const figures: Seg[] = [
     { t: '  ' },
     { t: formatTokens(snap.total), b: true },
-    { t: ' / ', c: HAZE },
-    { t: formatTokens(snap.window), c: HAZE },
+    { t: ' / ', c: th.muted },
+    { t: formatTokens(snap.window), c: th.muted },
     { t: `  ${snap.percent}%`, c: level, b: true },
-    ...delta(snap),
-    ...(snap.percent >= 85 ? [{ t: '  ⚠ COMPACT SOON', c: PINK, b: true }] : []),
+    ...delta(th, snap),
+    ...(snap.percent >= 85 ? [{ t: '  ⚠ COMPACT SOON', c: th.hot, b: true }] : []),
   ]
   const meterWidth = Math.max(8, Math.min(METER_WIDTH, available - 4 - widthOf(figures)))
-  const rowOne = [...meter(snap.percent / 100, meterWidth), ...figures]
+  const rowOne = [...meter(th, snap.percent / 100, meterWidth), ...figures]
 
   // Row two: each category's readout.
   const shown = snap.categories.filter(c => (c.kind === 'used' || c.kind === 'free') && c.tokens > 0)
   const rowTwo: Seg[] = shown.flatMap((c, i) => [
-    ...(i > 0 ? [{ t: ' ╱ ', c: PURPLE }] : []),
-    { t: `${labelOf(c.name)} `, c: c.kind === 'free' ? HAZE : CYAN },
-    { t: formatTokens(c.tokens), b: c.kind !== 'free', c: c.kind === 'free' ? HAZE : undefined },
+    ...(i > 0 ? [{ t: ' ╱ ', c: th.sep }] : []),
+    { t: `${labelOf(c.name)} `, c: c.kind === 'free' ? th.muted : th.label },
+    { t: formatTokens(c.tokens), b: c.kind !== 'free', c: c.kind === 'free' ? th.muted : undefined },
   ])
 
   const W = available
   const inner = W - 4
   // A narrow band drops the model name first, then the effort.
   const room = W - widthOf(title) - 2
-  const model = [fullTag, modelTag('', effort), []].find(tag => widthOf(tag) <= room) ?? []
+  const model = [fullTag, modelTag(th, '', effort), []].find(tag => widthOf(tag) <= room) ?? []
 
-  const top = [...title, ...sweep('─', Math.max(0, W - widthOf(title) - widthOf(model) - 2), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
-  const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3, 0, 0.9), { t: '─╯', c: PINK }]
-  const side = (segs: Seg[]): Seg[] => [{ t: '│ ', c: CYAN }, ...fit(segs, inner), { t: ' │', c: PINK }]
+  const top = [...title, ...sweep(th, '─', Math.max(0, W - widthOf(title) - widthOf(model) - 2), 0.1, 0.9), ...model, { t: '─╮', c: th.title2 }]
+  const bottom = [{ t: '╰', c: th.a }, ...sweep(th, '─', W - 3, 0, 0.9), { t: '─╯', c: th.title2 }]
+  const side = (segs: Seg[]): Seg[] => [{ t: '│ ', c: th.a }, ...fit(segs, inner), { t: ' │', c: th.title2 }]
 
   return [top, side(rowOne), side(rowTwo), bottom]
 }
@@ -224,6 +325,18 @@ async function readEffortSetting($: EngineInterface) {
     }
   } catch {
     // No such row on this build: turn.step fills it in on the next request.
+  }
+}
+
+// The chosen theme is kept across sessions in the mod's store.
+async function loadTheme($: EngineInterface) {
+  try {
+    const saved = await $.store.get('theme')
+    if (typeof saved === 'string' && THEMES[saved] && (await read($, themeId)) !== saved) {
+      await update($, themeId, () => saved)
+    }
+  } catch {
+    // No store: the default theme stands.
   }
 }
 
@@ -273,10 +386,11 @@ async function takeReading($: EngineInterface, isTurnEnd: boolean) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const r = await next(e)
+    await loadTheme($)
     void readEffortSetting($)
     await $.command.register({
       name: 'tokens',
-      description: 'Token breakdown: no args opens the detail pane; "hide"/"show" toggles the band',
+      description: 'Token breakdown: no args opens the pane; hide/show toggles the band; theme [name] lists or picks a theme',
     })
     void refresh($, true)
     return r
@@ -323,6 +437,23 @@ export const register: Register = on => {
 
   on('command.run', { command: 'tokens' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
+    if (arg === 'theme' || arg.startsWith('theme ')) {
+      const query = arg.slice('theme'.length).trim()
+      const current = themeOf(await read($, themeId))
+      if (!query) {
+        const list = Object.values(THEMES)
+          .map(t => `${t.id === current.id ? '●' : '○'} ${t.name}  (/tokens theme ${t.id})`)
+          .join('\n')
+        return { text: `Themes:\n${list}` }
+      }
+      const picked = findTheme(query)
+      if (!picked) {
+        return { text: `No theme "${query}". Try: ${Object.values(THEMES).map(t => t.id).join(', ')}` }
+      }
+      await update($, themeId, () => picked.id)
+      await $.store.set('theme', picked.id)
+      return { text: `Theme: ${picked.name}` }
+    }
     if (arg === 'hide') {
       await update($, isBandHidden, () => true)
       return { text: 'Token band hidden. /tokens show brings it back.' }
@@ -346,9 +477,10 @@ export const register: Register = on => {
     if (!snap) return next(e)
 
     const { Box, Text } = $.ui.resolve(e)
+    const th = themeOf(await read($, themeId))
     return (
       <Box flexDirection="column">
-        {bandLines(snap, e.props.bodyColumns, await read($, effortLevel)).map(line => (
+        {bandLines(snap, e.props.bodyColumns, await read($, effortLevel), th).map(line => (
           <Text wrap="truncate">
             {line.map(s => (
               <Text color={s.c} bold={s.b}>
@@ -365,8 +497,9 @@ export const register: Register = on => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text } = $.ui.resolve(e)
+    const th = themeOf(await read($, themeId))
     const snap = await read($, snapshot)
-    if (!snap) return <Text color={HAZE}>// NO SIGNAL — first reading lands after the next response</Text>
+    if (!snap) return <Text color={th.muted}>// NO SIGNAL — first reading lands after the next response</Text>
 
     const W = Math.max(30, e.props.bodyColumns)
     const draw = (segs: Seg[]) => (
@@ -379,21 +512,21 @@ export const register: Register = on => {
       </Text>
     )
     const heading = (title: string): Seg[] => [
-      { t: '◢ ', c: PINK },
-      { t: title, c: MAGENTA, b: true },
-      { t: ' ', c: PURPLE },
-      ...sweep('─', Math.max(0, W - title.length - 3), 0.2, 0.9),
+      { t: '◢ ', c: th.title2 },
+      { t: title, c: th.accent, b: true },
+      { t: ' ' },
+      ...sweep(th, '─', Math.max(0, W - title.length - 3), 0.2, 0.9),
     ]
-    const branch = (i: number, n: number): Seg => ({ t: i === n - 1 ? ' └─ ' : ' ├─ ', c: PURPLE })
+    const branch = (i: number, n: number): Seg => ({ t: i === n - 1 ? ' └─ ' : ' ├─ ', c: th.sep })
 
     // Header and the big meter.
     const figures: Seg[] = [
       { t: '  ' },
       { t: formatTokens(snap.total), b: true },
-      { t: ' / ', c: HAZE },
-      { t: formatTokens(snap.window), c: HAZE },
-      { t: `  ${snap.percent}%`, c: levelColor(snap.percent), b: true },
-      ...delta(snap),
+      { t: ' / ', c: th.muted },
+      { t: formatTokens(snap.window), c: th.muted },
+      { t: `  ${snap.percent}%`, c: levelColor(th, snap.percent), b: true },
+      ...delta(th, snap),
     ]
 
     // Categories: one meter each, scaled to the largest row.
@@ -405,13 +538,13 @@ export const register: Register = on => {
       const share = snap.window > 0 ? ((c.tokens / snap.window) * 100).toFixed(1) : '0.0'
       const cells = Math.min(barWidth, Math.round((c.tokens / largest) * barWidth))
       const bar: Seg[] = isUsed
-        ? meter(c.tokens / largest, barWidth)
-        : [{ t: (c.kind === 'free' ? '█' : '▚').repeat(cells), c: TRACK }, { t: ' '.repeat(barWidth - cells) }]
+        ? meter(th, c.tokens / largest, barWidth)
+        : [{ t: (c.kind === 'free' ? '█' : '▚').repeat(cells), c: th.track }, { t: ' '.repeat(barWidth - cells) }]
       return [
-        { t: ` ${labelOf(c.name).padEnd(8)}`, c: isUsed ? CYAN : HAZE, b: isUsed },
+        { t: ` ${labelOf(c.name).padEnd(8)}`, c: isUsed ? th.label : th.muted, b: isUsed },
         ...bar,
-        { t: formatTokens(c.tokens).padStart(8), b: isUsed, c: isUsed ? undefined : HAZE },
-        { t: `${share.padStart(6)}%`, c: HAZE },
+        { t: formatTokens(c.tokens).padStart(8), b: isUsed, c: isUsed ? undefined : th.muted },
+        { t: `${share.padStart(6)}%`, c: th.muted },
       ]
     }
 
@@ -422,20 +555,13 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column">
-        {draw([
-          { t: '◢ ', c: PINK },
-          { t: 'CONTEXT', c: CYAN, b: true },
-          { t: '//', c: MAGENTA, b: true },
-          { t: 'TOKENS', c: PINK, b: true },
-          { t: ' ◣ ', c: PINK },
-          ...modelTag(snap.model, await read($, effortLevel)),
-        ])}
-        {draw([...meter(snap.percent / 100, Math.max(8, Math.min(METER_WIDTH, W - widthOf(figures)))), ...figures])}
+        {draw([...titleSegs(th), { t: ' ' }, ...modelTag(th, snap.model, await read($, effortLevel))])}
+        {draw([...meter(th, snap.percent / 100, Math.max(8, Math.min(METER_WIDTH, W - widthOf(figures)))), ...figures])}
         {snap.history.length > 1
           ? draw([
-              { t: 'TREND ', c: HAZE },
-              ...snap.history.map(p => ({ t: spark(p), c: neon(p / 100) })),
-              { t: `  last ${snap.history.length} turns`, c: HAZE },
+              { t: 'TREND ', c: th.muted },
+              ...snap.history.map(p => ({ t: spark(p), c: neon(th, p / 100) })),
+              { t: `  last ${snap.history.length} turns`, c: th.muted },
             ])
           : ''}
 
@@ -444,9 +570,9 @@ export const register: Register = on => {
           {rows.map(c => draw(row(c)))}
           {deferred.length > 0
             ? draw([
-                { t: ' ON DEMAND ', c: HAZE },
-                { t: deferred.map(c => `${labelOf(c.name)} ${formatTokens(c.tokens)}`).join(' ╱ '), c: HAZE },
-                { t: '  (outside the window)', c: TRACK },
+                { t: ' ON DEMAND ', c: th.muted },
+                { t: deferred.map(c => `${labelOf(c.name)} ${formatTokens(c.tokens)}`).join(' ╱ '), c: th.muted },
+                { t: '  (outside the window)', c: th.track },
               ])
             : ''}
         </Box>
@@ -458,8 +584,8 @@ export const register: Register = on => {
               draw([
                 branch(i, memory.length),
                 { t: formatTokens(f.tokens).padStart(6), b: true },
-                { t: ` ${f.type.toUpperCase().padEnd(8)}`, c: CYAN },
-                { t: shortPath(f.path), c: HAZE },
+                { t: ` ${f.type.toUpperCase().padEnd(8)}`, c: th.label },
+                { t: shortPath(f.path), c: th.muted },
               ]),
             )}
           </Box>
@@ -474,8 +600,8 @@ export const register: Register = on => {
               draw([
                 branch(i, servers.length),
                 { t: formatTokens(s.tokens).padStart(6), b: true },
-                { t: ` ${s.name}`, c: CYAN },
-                { t: ` ╱ ${s.tools} tools`, c: HAZE },
+                { t: ` ${s.name}`, c: th.label },
+                { t: ` ╱ ${s.tools} tools`, c: th.muted },
               ]),
             )}
           </Box>
@@ -487,14 +613,14 @@ export const register: Register = on => {
           <Box flexDirection="column" marginTop={1}>
             {draw(heading('TOP SKILLS'))}
             {skills.map((s, i) =>
-              draw([branch(i, skills.length), { t: formatTokens(s.tokens).padStart(6), b: true }, { t: ` ${s.name}`, c: CYAN }]),
+              draw([branch(i, skills.length), { t: formatTokens(s.tokens).padStart(6), b: true }, { t: ` ${s.name}`, c: th.label }]),
             )}
           </Box>
         ) : (
           ''
         )}
 
-        <Box marginTop={1}>{draw([{ t: '// estimated like /context ╱ /tokens hide ╱ /tokens show', c: PURPLE }])}</Box>
+        <Box marginTop={1}>{draw([{ t: `// ${th.name.toUpperCase()} ╱ estimated like /context ╱ /tokens theme ╱ /tokens hide`, c: th.sep }])}</Box>
       </Box>
     )
   })

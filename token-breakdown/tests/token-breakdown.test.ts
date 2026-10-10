@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { bandLines, prettyModel, widthOf } from '../hooks/register'
+import { THEMES, bandLines, findTheme, neon, prettyModel, widthOf } from '../hooks/register'
 import type { On, RenderElement, SessionUsage } from 'claude-code'
 
 const USAGE: SessionUsage = {
@@ -41,8 +41,9 @@ const USAGE: SessionUsage = {
 
 const RUN = { origin: { kind: 'composer' }, presentation: { isFullscreen: true, columns: 160 } } as const
 
-const engine = (on: On) => {
+const engine = (on: On, store: Record<string, unknown> = {}) => {
   mock.clock(on, { now: 1_000 })
+  mock.store(on, store)
   on('session.start', () => ({ cwd: '/tmp' }))
   on('session.usage', () => ({ value: USAGE }))
   on('command.register', ($, e) => ({ value: { command: e.name } }))
@@ -124,4 +125,77 @@ test('model ids read as names', () => {
   expect(prettyModel('claude-opus-5-5[1m]')).toBe('Opus 5.5 1M')
   expect(prettyModel('Claude Opus 5.5')).toBe('Opus 5.5')
   expect(prettyModel('Opus 5.5')).toBe('Opus 5.5')
+})
+
+test('/tokens theme lists, picks and remembers a theme', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'tokens', args: '', ...RUN })
+
+  const list = await $.command.run({ command: 'tokens', args: 'theme', ...RUN })
+  for (const t of Object.values(THEMES)) expect(list.text).toContain(t.name)
+  expect(list.text).toContain('● Ghost in the Shell')
+
+  const other = Object.values(THEMES).find(t => t.id !== 'ghost')
+  if (!other) return
+  const picked = await $.command.run({ command: 'tokens', args: `theme ${other.name}`, ...RUN })
+  expect(picked.text).toBe(`Theme: ${other.name}`)
+
+  // The band now draws in the picked theme's colours.
+  const band = await $.ui.mount({ plugin: 'token-breakdown', surface: 'terminal', ...BAND })
+  const drawn = JSON.stringify(await band.drawn())
+  expect(drawn).toContain(other.a)
+  expect(drawn).not.toContain(THEMES.ghost!.a)
+  await band.unmount()
+
+  const unknown = await $.command.run({ command: 'tokens', args: 'theme nope', ...RUN })
+  expect(unknown.text).toContain('No theme "nope"')
+})
+
+test('themes are found by id, alias or full name', () => {
+  expect(findTheme('ghost')?.id).toBe('ghost')
+  expect(findTheme('Ghost in the Shell')?.id).toBe('ghost')
+  expect(findTheme('GHOST-IN-THE-SHELL')?.id).toBe('ghost')
+  expect(findTheme('Ghost and Shell')?.id).toBe('ghost')
+  expect(findTheme('Samurai Champloo')?.id).toBe('champloo')
+  expect(findTheme('cowboy bebop')?.id).toBe('bebop')
+  expect(findTheme('nope')).toBeUndefined()
+})
+
+test('a theme saved in an earlier session is back at start', async ($, on) => {
+  const other = Object.values(THEMES).find(t => t.id !== 'ghost')
+  if (!other) return
+  engine(on, { theme: other.id })
+  await $.session.start({ cwd: '/tmp', surface: 'terminal', isInteractive: true })
+  await $.command.run({ command: 'tokens', args: '', ...RUN })
+  const list = await $.command.run({ command: 'tokens', args: 'theme', ...RUN })
+  expect(list.text).toContain(`● ${other.name}`)
+})
+
+// WCAG contrast against a dark terminal background.
+const contrast = (h: string, bg = '#1e1e1e') => {
+  const lum = (c: string) => {
+    const [r, g, b] = [1, 3, 5].map(i => parseInt(c.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4))
+    return 0.2126 * (r ?? 0) + 0.7152 * (g ?? 0) + 0.0722 * (b ?? 0)
+  }
+  const [x, y] = [lum(h), lum(bg)]
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05)
+}
+
+test('every new theme reads on a dark background; its track stays dim but visible', () => {
+  for (const t of Object.values(THEMES).filter(t => t.id !== 'ghost')) {
+    for (const key of ['a', 'b', 'c', 'accent', 'title2', 'warn', 'hot', 'muted', 'label', 'sep'] as const) {
+      expect(contrast(t[key])).toBeGreaterThanOrEqual(3)
+    }
+    expect(contrast(t.track)).toBeGreaterThan(1.2)
+    expect(contrast(t.track)).toBeLessThan(2)
+  }
+})
+
+test('Cowboy Bebop draws flat title-card bands, not a blend', () => {
+  const bebop = THEMES.bebop!
+  expect(neon(bebop, 0.1)).toBe(bebop.a)
+  expect(neon(bebop, 0.5)).toBe(bebop.b)
+  expect(neon(bebop, 0.9)).toBe(bebop.c)
+  expect(neon(THEMES.champloo!, 0.25)).not.toBe(THEMES.champloo!.a)
 })
