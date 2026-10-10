@@ -43,7 +43,7 @@ Or add the marketplace once, then pick mods from it:
 This shows what `/context` shows, without having to run it. It's a framed neon HUD that sits above the prompt, in a cyberpunk/synthwave style:
 
 ```
-╭─◢ CONTEXT//TOKENS ◣─────────────────────────────────────────── ─Opus 5.5 ◆ HIGH ─╮
+╭─◢ CONTEXT//TOKENS ◣──────────────────────────────────────────── Opus 5.5 ◆ HIGH ─╮
 │ ▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  52.0K / 200K  26%  ▲3.1K                              │
 │ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ MSG 32.3K ╱ FREE 115K                              │
 ╰────────────────────────────────────────────────────────────────────────────────────╯
