@@ -43,14 +43,14 @@ Or add the marketplace once, then pick mods from it:
 This shows what `/context` shows, without having to run it. It's a framed neon HUD that sits above the prompt, in a cyberpunk/synthwave style:
 
 ```
-╭─◢ CONTEXT//TOKENS ◣──────────────────────── claude-opus-5-5 ─╮
-│ ▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  52.0K / 200K  26%  ▲3.1K  │
-│ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ MSG 32.3K ╱ FREE 115K    │
-╰─────────────────────────────────────────────────── ▂▂▂▃ ─╯
+╭─◢ CONTEXT//TOKENS ◣─────────────────────────────────────────── Claude Opus 5.5 ◆ HIGH ─╮
+│ ▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  52.0K / 200K  26%  ▲3.1K                              │
+│ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ MSG 32.3K ╱ FREE 115K                              │
+╰────────────────────────────────────────────────────────────────────────────── ▂▂▂▃ ─╯
 ```
 
-- **The frame** glows from neon cyan on the left to hot pink on the right, so the HUD stands apart from the chat. It shrinks to fit its contents, so it stays compact on wide terminals.
-- **The meter** fills along a cyan → purple → pink gradient, so a nearly full window reads hot. The percentage turns yellow at 60% and pink at 85%, where a `⚠ COMPACT SOON` flag also appears. `▲` shows the tokens added this turn.
+- **The frame** glows from neon cyan on the left to hot pink on the right, so the HUD stands apart from the chat. It spans the full width, with the model and the reasoning effort it runs at (`◆ HIGH`) in the top-right corner.
+- **The meter** is a fixed 30 cells. It fills along a cyan → purple → pink gradient, so a nearly full window reads hot. The percentage turns yellow at 60% and pink at 85%, where a `⚠ COMPACT SOON` flag also appears. `▲` shows the tokens added this turn.
 - **The readout** gives each category's size: system prompt, tools, MCP, memory, skills, messages and free space.
 - **The bottom edge** carries a sparkline of your recent turns.
 

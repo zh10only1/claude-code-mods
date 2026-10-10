@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { bandLines, widthOf } from '../hooks/register'
+import { bandLines, prettyModel, widthOf } from '../hooks/register'
 import type { On, RenderElement, SessionUsage } from 'claude-code'
 
 const USAGE: SessionUsage = {
@@ -96,21 +96,26 @@ test('/tokens hide removes the band', async ($, on) => {
   await band.unmount()
 })
 
-test('the frame closes and hugs its content, never wider than the band', () => {
+test('the frame spans the band; the meter stays short; model and effort sit top right', () => {
   const snap = {
     total: 52_000, window: 200_000, percent: 26, model: 'claude-opus-5-5', memoryFiles: [], mcpServers: [], skills: [],
     delta: 3_100, history: [10, 14, 19, 26], turnBase: 48_900, at: 0,
     categories: USAGE.context.breakdown!.categories.map(c => ({ name: c.name, tokens: c.tokens, color: c.color, kind: c.kind })),
   }
-  for (const width of [40, 57, 80, 143]) {
-    const lines = bandLines(snap, width)
+  for (const width of [40, 57, 80, 143, 200]) {
+    const lines = bandLines(snap, width, 'high')
     expect(lines.length).toBe(4)
-    const frame = widthOf(lines[0] ?? [])
-    expect(frame).toBeLessThanOrEqual(width)
-    for (const line of lines) expect(widthOf(line)).toBe(frame)
+    for (const line of lines) expect(widthOf(line)).toBe(width)
   }
-  // On a wide terminal the meter stays short and the frame stays compact.
-  expect(widthOf(bandLines(snap, 200)[0] ?? [])).toBeLessThan(80)
-  const hot = bandLines({ ...snap, percent: 91 }, 120)
-  for (const line of hot) expect(widthOf(line)).toBe(widthOf(hot[0] ?? []))
+  const wide = bandLines(snap, 200, 'high').map(l => l.map(s => s.t).join(''))
+  expect((wide[1]?.match(/[▰▱]/g) ?? []).length).toBe(30)
+  expect(wide[0]).toMatch(/Claude Opus 5\.5 ◆ HIGH ─╮$/)
+  for (const line of bandLines({ ...snap, percent: 91 }, 120)) expect(widthOf(line)).toBe(120)
+})
+
+test('model ids read as names', () => {
+  expect(prettyModel('claude-opus-5-5')).toBe('Claude Opus 5.5')
+  expect(prettyModel('claude-sonnet-4-5-20250929')).toBe('Claude Sonnet 4.5')
+  expect(prettyModel('claude-opus-5-5[1m]')).toBe('Claude Opus 5.5 1M')
+  expect(prettyModel('Opus 5.5')).toBe('Opus 5.5')
 })

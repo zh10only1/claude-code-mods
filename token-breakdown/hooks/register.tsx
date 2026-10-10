@@ -6,6 +6,7 @@ import type { TokenCategory, TokenSnapshot } from '../types'
 const PANE = 'token-breakdown'
 const snapshot = atom({ plugin: 'token-breakdown', key: 'snapshot' } as const, null)
 const isBandHidden = atom({ plugin: 'token-breakdown', key: 'isBandHidden' } as const, false)
+const effortLevel = atom({ plugin: 'token-breakdown', key: 'effort' } as const, null)
 
 // Refreshes triggered by tool calls are throttled; turn ends always refresh.
 const TOOL_REFRESH_MS = 3000
@@ -61,6 +62,32 @@ const SPARKS = '▁▂▃▄▅▆▇█'
 const spark = (percent: number) => SPARKS[Math.max(0, Math.min(7, Math.round((percent / 100) * 7)))] ?? '▁'
 
 const shortPath = (p: string) => p.replace(/^\/(Users|home)\/[^/]+/, '~')
+
+// claude-opus-5-5 → Claude Opus 5.5; a date suffix dropped, [1m] kept.
+export const prettyModel = (id: string): string => {
+  const wide = /\[1m\]/i.test(id) ? ' 1M' : ''
+  const base = id.replace(/\[.*?\]/g, '').trim()
+  if (!base.startsWith('claude-')) return base + wide
+  const parts = base.slice('claude-'.length).split('-').filter(p => !/^\d{8}$/.test(p))
+  const words = parts.filter(p => !/^\d+$/.test(p)).map(p => p[0]?.toUpperCase() + p.slice(1))
+  const version = parts.filter(p => /^\d+$/.test(p)).join('.')
+  return ['Claude', ...words, version].filter(Boolean).join(' ') + wide
+}
+
+const EFFORT_COLORS: Record<string, string> = {
+  low: '#05d9e8',
+  medium: '#7b2cff',
+  high: '#d300c5',
+  xhigh: '#ff2a6d',
+  max: '#fcee0c',
+}
+
+// Top-right of the frame: model, then the effort it runs at.
+const modelTag = (model: string, effort: string | null): Seg[] => {
+  const tag: Seg[] = model ? [{ t: ` ${prettyModel(model)} `, c: HAZE }] : effort ? [{ t: ' ' }] : []
+  if (effort) tag.push({ t: '◆ ', c: PURPLE }, { t: `${effort.toUpperCase()} `, c: EFFORT_COLORS[effort] ?? CYAN, b: true })
+  return tag
+}
 
 // ── Lines as plain segments ─────────────────────────────────────────────────
 // Every line is built as coloured segments first, so its width is known
@@ -120,7 +147,7 @@ const delta = (snap: TokenSnapshot): Seg[] =>
 //   │ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ SKILLS 1.1K ╱ MSG 32.3K ╱ FREE 115K │
 //   ╰─────────────────────────────────────────────────────── ▁▂▃▄▅▆ ─╯
 
-export const bandLines = (snap: TokenSnapshot, width: number): Seg[][] => {
+export const bandLines = (snap: TokenSnapshot, width: number, effort: string | null = null): Seg[][] => {
   const available = Math.max(30, width)
   const level = levelColor(snap.percent)
 
@@ -133,7 +160,7 @@ export const bandLines = (snap: TokenSnapshot, width: number): Seg[][] => {
     { t: 'TOKENS', c: PINK, b: true },
     { t: ' ◣', c: PINK },
   ]
-  const model: Seg[] = snap.model ? [{ t: ` ${snap.model} `, c: HAZE }] : []
+  const fullTag = modelTag(snap.model, effort)
 
   // Row one: a fixed-length meter and the figures.
   const figures: Seg[] = [
@@ -162,15 +189,11 @@ export const bandLines = (snap: TokenSnapshot, width: number): Seg[][] => {
       ? [{ t: ' ' }, ...snap.history.map(p => ({ t: spark(p), c: neon(p / 100) })), { t: ' ' }]
       : []
 
-  // The frame hugs its widest line, never wider than the band.
-  const needed = Math.max(
-    widthOf(rowOne) + 4,
-    widthOf(rowTwo) + 4,
-    widthOf(title) + widthOf(model) + 4,
-    widthOf(trend) + 6,
-  )
-  const W = Math.min(available, needed)
+  const W = available
   const inner = W - 4
+  // A narrow band drops the model name first, then the effort.
+  const room = W - widthOf(title) - 2
+  const model = [fullTag, modelTag('', effort), []].find(tag => widthOf(tag) <= room) ?? []
 
   const top = [...title, ...sweep('─', Math.max(0, W - widthOf(title) - widthOf(model) - 2), 0.1, 0.9), ...model, { t: '─╮', c: PINK }]
   const bottom = [{ t: '╰', c: CYAN }, ...sweep('─', W - 3 - widthOf(trend), 0, 0.9), ...trend, { t: '─╯', c: PINK }]
@@ -274,6 +297,18 @@ export const register: Register = on => {
     // Observer only: never block or rerun a tool call.
     .catch(($, e, next) => next(e))
 
+  // The main loop's requests say which effort they run at.
+  on('turn.step', async function* ($, e, next) {
+    if (!e.agentId && e.effort !== undefined) {
+      const effort = String(e.effort)
+      // Observer only: recorded off the request's path, never holding it up.
+      void read($, effortLevel)
+        .then(current => (current === effort ? undefined : update($, effortLevel, () => effort)))
+        .catch(() => undefined)
+    }
+    return yield* next(e)
+  })
+
   on('command.run', { command: 'tokens' }, async ($, e) => {
     const arg = e.args.trim().toLowerCase()
     if (arg === 'hide') {
@@ -301,7 +336,7 @@ export const register: Register = on => {
     const { Box, Text } = $.ui.resolve(e)
     return (
       <Box flexDirection="column">
-        {bandLines(snap, e.props.bodyColumns).map(line => (
+        {bandLines(snap, e.props.bodyColumns, await read($, effortLevel)).map(line => (
           <Text wrap="truncate">
             {line.map(s => (
               <Text color={s.c} bold={s.b}>
@@ -380,8 +415,8 @@ export const register: Register = on => {
           { t: 'CONTEXT', c: CYAN, b: true },
           { t: '//', c: MAGENTA, b: true },
           { t: 'TOKENS', c: PINK, b: true },
-          { t: ' ◣  ', c: PINK },
-          { t: snap.model, c: HAZE },
+          { t: ' ◣ ', c: PINK },
+          ...modelTag(snap.model, await read($, effortLevel)),
         ])}
         {draw([...meter(snap.percent / 100, Math.max(8, Math.min(METER_WIDTH, W - widthOf(figures)))), ...figures])}
         {snap.history.length > 1

@@ -25,6 +25,6 @@ export type TokenSnapshot = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'token-breakdown': { snapshot: TokenSnapshot | null; isBandHidden: boolean }
+    'token-breakdown': { snapshot: TokenSnapshot | null; isBandHidden: boolean; effort: string | null }
   }
 }
