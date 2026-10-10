@@ -5,6 +5,9 @@ Personal mods for [Claude Code](https://claude.dev/blog/getting-started-with-cla
 | Mod | What it does |
 | --- | --- |
 | [`token-breakdown`](#token-breakdown) | A neon HUD above the prompt that shows your context window's token usage at all times, split into categories, with anime-named colour themes |
+| [`daft-tokens`](#daft-tokens) | The same token readout in high-contrast black and white, with a pixel-art silver Daft Punk helmet |
+
+> Both mods draw in the same spot above the prompt, so only one shows at a time. Install the one you like, or install both and hide one: `/tokens hide` or `/daft hide`.
 
 ## Quick install
 
@@ -12,7 +15,10 @@ Requires **Claude Code 2.1.287 or later** (check with `claude --version`). Insid
 
 ```
 /plugin install token-breakdown --marketplace zh10only1/claude-code-mods
+/plugin install daft-tokens --marketplace zh10only1/claude-code-mods
 ```
+
+Run whichever line you want, or both.
 
 1. Answer **`y`** when it asks to add the `zh10only1/claude-code-mods` marketplace.
 2. Choose a scope. **User** loads the mod in every session (recommended), and **Project** loads it in the current repo only.
@@ -23,6 +29,7 @@ Or add the marketplace once, then pick mods from it:
 ```
 /plugin marketplace add zh10only1/claude-code-mods
 /plugin install token-breakdown@zh10only1-mods
+/plugin install daft-tokens@zh10only1-mods
 ```
 
 **Update** to the latest version:
@@ -32,7 +39,7 @@ Or add the marketplace once, then pick mods from it:
 /reload-plugins
 ```
 
-**Remove:** `/plugin uninstall token-breakdown@zh10only1-mods`
+**Remove:** `/plugin uninstall token-breakdown@zh10only1-mods` (or `daft-tokens@zh10only1-mods`)
 
 > Mods run with the same access as Claude Code itself. Read the source before installing any mod, these included. Each one is plain TypeScript under its `hooks/` folder.
 
@@ -92,10 +99,35 @@ Full names work too: `/tokens theme Cowboy Bebop`.
 
 ---
 
+## daft-tokens
+
+The same live token readout as token-breakdown, restyled in high contrast: a pure-black panel with a pure-white border, bright white figures, and Thomas Bangalter's silver Daft Punk helmet drawn as pixel art beside it.
+
+![daft-tokens: a black panel with a pixel-art silver helmet on the left, then the context bar, the categories and RANDOM ACCESS MEMORIES](docs/daft-tokens.png)
+
+<sub>A mock-up rendered from the mod's own pixel and colour data. In the terminal, the helmet is drawn with half-block characters.</sub>
+
+- **The helmet:** chrome dome, shield-shaped glossy black visor with reflections, silver chin. It's 14×16 pixels: each character cell holds two stacked pixels, so it fills 8 rows. It's original pixel art, not a copied image.
+- **Top line:** `CONTEXT`, then the model and the reasoning effort it runs at (`Opus 5.5 ◆ HIGH`). The effort shows as soon as the session starts.
+- **Meter:** 30 cells of pure white over a dark track, then the tokens used out of the window, the percentage, and `▲` for the tokens added this turn. At 85% the percentage turns inverted (black on white) and `⚠ COMPACT SOON` appears.
+- **Readout:** each category's size: `SYS`, `TOOLS`, `MCP`, `MEM`, `SKILLS`, `MSG` and `FREE`.
+- **Bottom line:** RANDOM ACCESS MEMORIES.
+
+### Commands
+
+| Command | Effect |
+| --- | --- |
+| `/daft hide` | Hides the HUD |
+| `/daft show` | Brings it back |
+
+Like token-breakdown, it appears after Claude's first reply, refreshes after every turn, makes no extra API calls, and is best on a dark terminal.
+
+---
+
 ## Developing a mod
 
 ```
-claude --plugin-dir ./token-breakdown    # run it from the folder; saves hot-reload
+claude --plugin-dir ./token-breakdown    # run a mod from its folder; saves hot-reload
 claude plugin validate ./token-breakdown # check the manifest and hooks module
 claude plugin test ./token-breakdown     # run tests/*.test.ts
 ```

@@ -9,6 +9,11 @@
       "name": "token-breakdown",
       "source": "./token-breakdown",
       "description": "Neon HUD above the prompt with your context window's token usage by category, plus anime colour themes and a /tokens detail pane"
+    },
+    {
+      "name": "daft-tokens",
+      "source": "./daft-tokens",
+      "description": "Monochrome context-token HUD above the prompt, with a pixel-art silver Daft Punk helmet"
     }
   ]
 }
