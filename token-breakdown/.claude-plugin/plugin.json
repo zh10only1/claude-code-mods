@@ -1,7 +1,9 @@
 {
   "name": "token-breakdown",
-  "version": "0.7.1",
-  "description": "Always-on context token breakdown above the prompt (total + per category, like /context), with a /tokens detail pane",
-  "author": { "name": "zh10only1" },
+  "version": "0.7.2",
+  "description": "Neon HUD above the prompt with your context window's token usage by category, plus anime colour themes and a /tokens detail pane",
+  "author": {
+    "name": "zh10only1"
+  },
   "types": "./types/index.d.ts"
 }

@@ -8,7 +8,7 @@
     {
       "name": "token-breakdown",
       "source": "./token-breakdown",
-      "description": "Always-on context token breakdown above the prompt, with a /tokens detail pane"
+      "description": "Neon HUD above the prompt with your context window's token usage by category, plus anime colour themes and a /tokens detail pane"
     }
   ]
 }

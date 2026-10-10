@@ -205,3 +205,12 @@ test('a saved theme that no longer exists falls back to Ghost in the Shell', asy
   expect(list.text).toContain('● Ghost in the Shell')
   expect(list.text).not.toContain('Champloo')
 })
+
+test('the HUD and the pane also draw on the desktop surface', async ($, on) => {
+  engine(on)
+  await $.session.start({ cwd: '/tmp', surface: 'desktop', isInteractive: true })
+  await $.command.run({ command: 'tokens', args: '', ...RUN })
+  const band = await $.ui.mount({ plugin: 'token-breakdown', surface: 'desktop', ...BAND })
+  expect(await band.find({ type: 'Text', text: /52\.0K \/ 200K  26%/ })).toBeDefined()
+  await band.unmount()
+})
