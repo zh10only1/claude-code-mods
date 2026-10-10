@@ -133,7 +133,7 @@ const sweep = (glyph: string, count: number, t0: number, t1: number, steps = 24)
 // from cyan to hot pink as the window fills.
 export const meter = (fraction: number, width: number): Seg[] => {
   const filled = Math.max(0, Math.min(width, Math.round(fraction * width)))
-  return [...sweep('▰', filled, 0, filled / Math.max(1, width)), { t: '▱'.repeat(width - filled), c: TRACK }]
+  return [...sweep('█', filled, 0, filled / Math.max(1, width)), { t: '█'.repeat(width - filled), c: TRACK }]
 }
 
 const delta = (snap: TokenSnapshot): Seg[] =>
@@ -143,7 +143,7 @@ const delta = (snap: TokenSnapshot): Seg[] =>
 
 // ── The band: a framed HUD ──────────────────────────────────────────────────
 //   ╭─◢ CONTEXT//TOKENS ◣──────────────────────────── claude-opus-5-5 ─╮
-//   │ ▰▰▰▰▰▰▰▰▰▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱▱  52.0K / 200K  26%  ▲3.1K │
+//   │ █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  52.0K / 200K  26%  ▲3.1K │
 //   │ SYS 3.2K ╱ TOOLS 12.0K ╱ MEM 4.5K ╱ SKILLS 1.1K ╱ MSG 32.3K ╱ FREE 115K │
 //   ╰─────────────────────────────────────────────────────── ▁▂▃▄▅▆ ─╯
 
@@ -406,7 +406,7 @@ export const register: Register = on => {
       const cells = Math.min(barWidth, Math.round((c.tokens / largest) * barWidth))
       const bar: Seg[] = isUsed
         ? meter(c.tokens / largest, barWidth)
-        : [{ t: (c.kind === 'free' ? '▱' : '▚').repeat(cells), c: TRACK }, { t: ' '.repeat(barWidth - cells) }]
+        : [{ t: (c.kind === 'free' ? '█' : '▚').repeat(cells), c: TRACK }, { t: ' '.repeat(barWidth - cells) }]
       return [
         { t: ` ${labelOf(c.name).padEnd(8)}`, c: isUsed ? CYAN : HAZE, b: isUsed },
         ...bar,

@@ -112,7 +112,7 @@ test('the frame spans the band; the meter stays short; model and effort sit top 
     for (const line of lines) expect(widthOf(line)).toBe(width)
   }
   const wide = bandLines(snap, 200, 'high').map(l => l.map(s => s.t).join(''))
-  expect((wide[1]?.match(/[▰▱]/g) ?? []).length).toBe(30)
+  expect((wide[1]?.match(/█/g) ?? []).length).toBe(30)
   expect(wide[0]).toMatch(/─ Opus 5\.5 ◆ HIGH ─╮$/)
   expect(wide[3]).toMatch(/^╰─+╯$/)
   for (const line of bandLines({ ...snap, percent: 91 }, 120)) expect(widthOf(line)).toBe(120)
